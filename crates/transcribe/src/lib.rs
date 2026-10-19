@@ -1,17 +1,18 @@
-//! Speech recognition backends implementing `verbatim_core::Transcriber`
-//! (ADR 0003).
+//! Speech recognition with sherpa-onnx, implementing
+//! `verbatim_core::Transcriber` (ADR 0003, ADR 0008).
 
 use std::ops::ControlFlow;
 use std::time::Duration;
 
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineRecognizerResult,
-    OfflineTransducerModelConfig, SileroVadModelConfig, VadModelConfig, VoiceActivityDetector,
+    OfflineTransducerModelConfig, OfflineWhisperModelConfig, SileroVadModelConfig, VadModelConfig,
+    VoiceActivityDetector,
 };
 use verbatim_core::{AudioStream, Error, Event, Segment, Transcriber, Word};
-use verbatim_models::{Model, ModelStore, PARAKEET_TDT_V3, SILERO_VAD};
+use verbatim_models::{Model, ModelStore, PARAKEET_TDT_V3, SILERO_VAD, WHISPER_LARGE_V3_TURBO};
 
-/// Sample rate both the VAD and Parakeet expect.
+/// Sample rate the VAD and both recognisers expect.
 pub const SAMPLE_RATE: u32 = 16_000;
 
 /// Samples per VAD inference, fixed by the Silero model.
@@ -39,17 +40,57 @@ const CONTEXT_SECS: f32 = 3.0;
 /// apart.
 const CONTEXT_GAP_SECS: f32 = 0.2;
 
-/// Silero VAD finds speech, and Parakeet TDT transcribes each speech segment.
-pub struct ParakeetTranscriber {
+static PARAKEET_MODELS: [&Model; 2] = [&SILERO_VAD, &PARAKEET_TDT_V3];
+static WHISPER_MODELS: [&Model; 2] = [&SILERO_VAD, &WHISPER_LARGE_V3_TURBO];
+
+/// The speech recognition model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Engine {
+    /// NVIDIA Parakeet TDT v3: fast, 25 European languages, detected from
+    /// the audio, with word timings.
+    Parakeet,
+    /// OpenAI Whisper large-v3-turbo: about 100 languages, slower. Detects
+    /// the language unless one is given as an ISO 639-1 code such as "pt".
+    /// This export gives no word timings.
+    Whisper { language: Option<String> },
+}
+
+impl Engine {
+    /// Models this engine needs, the VAD included.
+    pub fn models(&self) -> &'static [&'static Model] {
+        match self {
+            Engine::Parakeet => &PARAKEET_MODELS,
+            Engine::Whisper { .. } => &WHISPER_MODELS,
+        }
+    }
+
+    /// How often live captions can re-decode the speech in progress and
+    /// keep up with real time on a laptop CPU. Whisper always encodes a
+    /// 30-second window, so each decode costs about as much as a long one.
+    pub fn partial_interval(&self) -> Duration {
+        match self {
+            Engine::Parakeet => Duration::from_secs(1),
+            Engine::Whisper { .. } => Duration::from_secs(2),
+        }
+    }
+}
+
+/// Silero VAD finds speech, and the engine's model transcribes each speech
+/// segment.
+pub struct SherpaTranscriber {
     recognizer: OfflineRecognizer,
     vad_config: VadModelConfig,
     /// Samples between partial recognitions, when live results are wanted.
     partial_every: Option<usize>,
+    /// Whether short speech is recognised after context (see
+    /// [`SHORT_SPEECH_SECS`]), which needs word timings to drop the
+    /// context's words, and only helps when the model detects the language.
+    uses_context: bool,
 }
 
-impl ParakeetTranscriber {
-    pub fn load(store: &ModelStore, num_threads: i32) -> Result<Self, Error> {
-        for model in [&SILERO_VAD, &PARAKEET_TDT_V3] {
+impl SherpaTranscriber {
+    pub fn load(store: &ModelStore, engine: &Engine, num_threads: i32) -> Result<Self, Error> {
+        for model in engine.models() {
             if !store.is_installed(model) {
                 return Err(Error::ModelMissing(model.name.to_owned()));
             }
@@ -59,16 +100,34 @@ impl ParakeetTranscriber {
         };
 
         let mut config = OfflineRecognizerConfig::default();
-        config.model_config.transducer = OfflineTransducerModelConfig {
-            encoder: path(&PARAKEET_TDT_V3, "encoder.int8.onnx"),
-            decoder: path(&PARAKEET_TDT_V3, "decoder.int8.onnx"),
-            joiner: path(&PARAKEET_TDT_V3, "joiner.int8.onnx"),
-        };
-        config.model_config.tokens = path(&PARAKEET_TDT_V3, "tokens.txt");
+        match engine {
+            Engine::Parakeet => {
+                config.model_config.transducer = OfflineTransducerModelConfig {
+                    encoder: path(&PARAKEET_TDT_V3, "encoder.int8.onnx"),
+                    decoder: path(&PARAKEET_TDT_V3, "decoder.int8.onnx"),
+                    joiner: path(&PARAKEET_TDT_V3, "joiner.int8.onnx"),
+                };
+                config.model_config.tokens = path(&PARAKEET_TDT_V3, "tokens.txt");
+            }
+            Engine::Whisper { language } => {
+                let model = &WHISPER_LARGE_V3_TURBO;
+                config.model_config.whisper = OfflineWhisperModelConfig {
+                    encoder: path(model, "turbo-encoder.int8.onnx"),
+                    decoder: path(model, "turbo-decoder.int8.onnx"),
+                    // An empty language makes Whisper detect it.
+                    language: Some(language.clone().unwrap_or_default()),
+                    task: Some("transcribe".into()),
+                    tail_paddings: -1,
+                    enable_token_timestamps: false,
+                    enable_segment_timestamps: false,
+                };
+                config.model_config.tokens = path(model, "turbo-tokens.txt");
+            }
+        }
         config.model_config.num_threads = num_threads;
         config.model_config.provider = Some("cpu".into());
         let recognizer = OfflineRecognizer::create(&config)
-            .ok_or_else(|| backend_error("could not load the Parakeet model"))?;
+            .ok_or_else(|| backend_error("could not load the speech recognition model"))?;
 
         let vad_config = VadModelConfig {
             silero_vad: SileroVadModelConfig {
@@ -90,6 +149,7 @@ impl ParakeetTranscriber {
             recognizer,
             vad_config,
             partial_every: None,
+            uses_context: *engine == Engine::Parakeet,
         })
     }
 
@@ -120,7 +180,7 @@ impl ParakeetTranscriber {
     ) -> Option<Recognition> {
         let (start_ms, end_ms) = (to_ms(start), to_ms(end));
         let short = (speech.len() as f32) < SHORT_SPEECH_SECS * SAMPLE_RATE as f32;
-        if short && !context.is_empty() {
+        if self.uses_context && short && !context.is_empty() {
             let gap = (CONTEXT_GAP_SECS * SAMPLE_RATE as f32) as usize;
             let mut input = Vec::with_capacity(context.len() + gap + speech.len());
             input.extend_from_slice(context);
@@ -193,7 +253,7 @@ impl ParakeetTranscriber {
     }
 }
 
-impl Transcriber for ParakeetTranscriber {
+impl Transcriber for SherpaTranscriber {
     fn transcribe(
         &self,
         audio: &mut dyn AudioStream,
@@ -470,7 +530,8 @@ mod tests {
         verbatim_audio::init().unwrap();
         let mut decoder =
             verbatim_audio::Decoder::open(std::path::Path::new(&audio), SAMPLE_RATE).unwrap();
-        let transcriber = ParakeetTranscriber::load(&ModelStore::new(&dir), 2).unwrap();
+        let transcriber =
+            SherpaTranscriber::load(&ModelStore::new(&dir), &Engine::Parakeet, 2).unwrap();
         let mut segments = Vec::new();
         let mut last_progress = 0.0;
 
@@ -501,6 +562,39 @@ mod tests {
         eprintln!("{segments:#?}");
     }
 
+    /// Needs Whisper installed in `VERBATIM_MODELS_DIR` too.
+    #[test]
+    #[ignore = "needs installed models in VERBATIM_MODELS_DIR"]
+    fn whisper_transcribes_speech_in_the_given_language() {
+        let dir = std::env::var("VERBATIM_MODELS_DIR").expect("VERBATIM_MODELS_DIR is set");
+        let audio = std::env::var("VERBATIM_TEST_AUDIO").expect("VERBATIM_TEST_AUDIO is set");
+        verbatim_audio::init().unwrap();
+        let mut decoder =
+            verbatim_audio::Decoder::open(std::path::Path::new(&audio), SAMPLE_RATE).unwrap();
+        let engine = Engine::Whisper {
+            language: Some("en".into()),
+        };
+        let transcriber = SherpaTranscriber::load(&ModelStore::new(&dir), &engine, 2).unwrap();
+        let mut segments = Vec::new();
+
+        transcriber
+            .transcribe(&mut decoder, &mut |event| {
+                if let Event::Segment(segment) = event {
+                    segments.push(segment);
+                }
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+
+        assert!(!segments.is_empty());
+        assert!(
+            segments
+                .iter()
+                .all(|s| !s.text.is_empty() && s.words.is_empty())
+        );
+        eprintln!("{segments:#?}");
+    }
+
     #[test]
     #[ignore = "needs installed models in VERBATIM_MODELS_DIR"]
     fn stops_when_cancelled() {
@@ -509,7 +603,8 @@ mod tests {
         verbatim_audio::init().unwrap();
         let mut decoder =
             verbatim_audio::Decoder::open(std::path::Path::new(&audio), SAMPLE_RATE).unwrap();
-        let transcriber = ParakeetTranscriber::load(&ModelStore::new(&dir), 2).unwrap();
+        let transcriber =
+            SherpaTranscriber::load(&ModelStore::new(&dir), &Engine::Parakeet, 2).unwrap();
 
         let result = transcriber.transcribe(&mut decoder, &mut |_| ControlFlow::Break(()));
 
@@ -550,7 +645,7 @@ mod tests {
         verbatim_audio::init().unwrap();
         let mut decoder =
             verbatim_audio::Decoder::open(std::path::Path::new(&audio), SAMPLE_RATE).unwrap();
-        let transcriber = ParakeetTranscriber::load(&ModelStore::new(&dir), 2)
+        let transcriber = SherpaTranscriber::load(&ModelStore::new(&dir), &Engine::Parakeet, 2)
             .unwrap()
             .with_partials(Duration::from_millis(500));
         let mut events = Vec::new();
@@ -585,7 +680,7 @@ mod tests {
     fn rejects_missing_models() {
         let root = std::env::temp_dir().join("verbatim-no-models");
 
-        let result = ParakeetTranscriber::load(&ModelStore::new(root), 1);
+        let result = SherpaTranscriber::load(&ModelStore::new(root), &Engine::Parakeet, 1);
 
         assert!(matches!(result, Err(Error::ModelMissing(_))));
     }

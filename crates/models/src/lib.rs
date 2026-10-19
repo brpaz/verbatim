@@ -98,8 +98,43 @@ pub static PARAKEET_TDT_V3: Model = Model {
     ],
 };
 
-/// Models a transcription needs.
-pub static TRANSCRIBE_MODELS: [&Model; 2] = [&SILERO_VAD, &PARAKEET_TDT_V3];
+/// Pinned to a commit so the files behind the URLs cannot change.
+macro_rules! whisper_turbo_url {
+    ($file:literal) => {
+        concat!(
+            "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-turbo/resolve/",
+            "2ca6ff69fc878651b770880507669577ac41c2ff/",
+            $file
+        )
+    };
+}
+
+/// OpenAI Whisper large-v3-turbo, int8-quantized for sherpa-onnx.
+pub static WHISPER_LARGE_V3_TURBO: Model = Model {
+    id: "whisper-large-v3-turbo-int8",
+    name: "OpenAI Whisper Large v3 Turbo",
+    license: "MIT",
+    files: &[
+        ModelFile {
+            name: "turbo-encoder.int8.onnx",
+            url: whisper_turbo_url!("turbo-encoder.int8.onnx"),
+            size: 674_716_297,
+            sha256: "b02dcdf54f348741e93fe732b67d933c8dcb6735655f710640143081db38878b",
+        },
+        ModelFile {
+            name: "turbo-decoder.int8.onnx",
+            url: whisper_turbo_url!("turbo-decoder.int8.onnx"),
+            size: 361_080_764,
+            sha256: "20accd02388482eb3a46bd615631adfdc85e1eb2c7db9ea3f02a40ffe6b81547",
+        },
+        ModelFile {
+            name: "turbo-tokens.txt",
+            url: whisper_turbo_url!("turbo-tokens.txt"),
+            size: 816_730,
+            sha256: "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126",
+        },
+    ],
+};
 
 /// Directory holding one subdirectory per installed model.
 #[derive(Debug, Clone)]

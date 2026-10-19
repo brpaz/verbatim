@@ -79,16 +79,15 @@ struct Cue {
 fn cues(segments: &[Segment]) -> Vec<Cue> {
     let mut cues = Vec::new();
     for segment in segments {
-        if segment.words.is_empty() {
-            cues.push(Cue {
-                start_ms: segment.start_ms,
-                end_ms: segment.end_ms,
-                text: wrap(&segment.text),
-            });
-            continue;
-        }
+        let estimated;
+        let words = if segment.words.is_empty() {
+            estimated = estimate_words(segment);
+            &estimated
+        } else {
+            &segment.words
+        };
         let mut current: Vec<&Word> = Vec::new();
-        for word in &segment.words {
+        for word in words {
             if let Some(first) = current.first() {
                 let len = joined_len(&current);
                 let mut candidate = current.clone();
@@ -111,6 +110,30 @@ fn cues(segments: &[Segment]) -> Vec<Cue> {
         }
     }
     cues
+}
+
+/// Spreads a segment's words over its time span in proportion to their
+/// length, for recognisers that give no word timings. Segments span little
+/// more than their speech, so the estimate stays close.
+fn estimate_words(segment: &Segment) -> Vec<Word> {
+    let texts: Vec<&str> = segment.text.split_whitespace().collect();
+    // Each word counts with the space after it.
+    let total: usize = texts.iter().map(|text| chars(text) + 1).sum();
+    let span = segment.end_ms.saturating_sub(segment.start_ms);
+    let at = |offset: usize| segment.start_ms + span * offset as u64 / total.max(1) as u64;
+    let mut offset = 0;
+    texts
+        .into_iter()
+        .map(|text| {
+            let start_ms = at(offset);
+            offset += chars(text) + 1;
+            Word {
+                start_ms,
+                end_ms: at(offset),
+                text: text.to_owned(),
+            }
+        })
+        .collect()
 }
 
 fn cue(words: &[&Word]) -> Cue {
@@ -280,18 +303,27 @@ mod tests {
     }
 
     #[test]
-    fn segment_without_words_becomes_one_wrapped_cue() {
+    fn segment_without_word_timings_splits_by_estimated_timings() {
+        let text = "This segment has no word timings. It goes on for a while longer \
+                    than one cue can hold, so it has to be split somewhere sensible.";
         let segment = Segment {
-            start_ms: 0,
-            end_ms: 4_000,
-            text: "A segment with no word timings that is longer than a line".into(),
+            start_ms: 10_000,
+            end_ms: 20_000,
+            text: text.into(),
             words: vec![],
         };
 
         let cues = cues(&[segment]);
 
-        assert_eq!(cues.len(), 1);
-        assert_eq!(cues[0].text.lines().count(), 2);
-        assert_eq!((cues[0].start_ms, cues[0].end_ms), (0, 4_000));
+        assert!(cues.len() > 1);
+        assert_eq!(cues[0].start_ms, 10_000);
+        assert_eq!(cues.last().unwrap().end_ms, 20_000);
+        assert!(cues.windows(2).all(|w| w[0].end_ms <= w[1].start_ms));
+        assert_eq!(cues[0].text, "This segment has no word timings.");
+        let words: Vec<_> = cues
+            .iter()
+            .flat_map(|cue| cue.text.split_whitespace())
+            .collect();
+        assert_eq!(words.join(" "), text);
     }
 }
