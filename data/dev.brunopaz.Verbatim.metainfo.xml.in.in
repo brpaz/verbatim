@@ -16,9 +16,8 @@
   </description>
   <screenshots>
     <screenshot type="default">
-      <!-- FIXME Replace this placeholder screenshot URL with a project screenshot. -->
-      <image>https://example.com/screenshot.png</image>
-      <caption>Main window</caption>
+      <image>https://raw.githubusercontent.com/brpaz/verbatim/main/data/resources/screenshots/screenshot1.png</image>
+      <caption>A transcript, played back from the selected line</caption>
     </screenshot>
   </screenshots>
   <url type="homepage">https://github.com/brpaz/verbatim</url>
