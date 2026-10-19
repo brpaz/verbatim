@@ -125,6 +125,8 @@ VERBATIM_TEST_AUDIO=/path/to/speech.wav \
   cargo test -p verbatim-transcribe -- --include-ignored
 ```
 
+`cargo test -p verbatim-audio -- --include-ignored` also captures briefly from the default microphone and system audio, and needs a running PipeWire or PulseAudio server.
+
 ### Cleaning Build Artifacts
 
 To clean all build artifacts:

@@ -1,6 +1,6 @@
 # Architecture
 
-Verbatim is a GTK4 and libadwaita app in Rust that transcribes audio and video files with local speech recognition. Meson builds it around Cargo ([ADR 0002](adr/0002-build-with-meson-around-cargo.md)), and the UI is written in Blueprint ([ADR 0001](adr/0001-use-libadwaita-and-blueprint.md)).
+Verbatim is a GTK4 and libadwaita app in Rust that transcribes audio and video files, and captions live audio, with local speech recognition. Meson builds it around Cargo ([ADR 0002](adr/0002-build-with-meson-around-cargo.md)), and the UI is written in Blueprint ([ADR 0001](adr/0001-use-libadwaita-and-blueprint.md)).
 
 ## Workspace
 
@@ -8,13 +8,13 @@ Verbatim is a GTK4 and libadwaita app in Rust that transcribes audio and video f
 ├── src/                  # GTK app (crate `verbatim`)
 │   ├── main.rs           # Logging, i18n, resources, application start
 │   ├── application.rs    # AdwApplication: actions, accelerators, opening files
-│   ├── window.rs         # Main window: file loading, transcript list, playback, export
-│   ├── transcription.rs  # Background transcription job
+│   ├── window.rs         # Main window: file loading, live captions, transcript list, playback, export
+│   ├── transcription.rs  # Background transcription job, for a file or live audio
 │   └── config.rs         # Build-time values from Meson (MESON_* variables)
 ├── crates/
 │   ├── core/             # Domain types, Transcriber contract, TXT/SRT/WebVTT export
 │   ├── models/           # Model catalog, verified resumable downloads
-│   ├── audio/            # GStreamer file decoding to 16 kHz mono
+│   ├── audio/            # GStreamer file decoding and live capture to 16 kHz mono
 │   └── transcribe/       # Silero VAD + Parakeet TDT via sherpa-onnx
 └── data/resources/ui/    # Blueprint UI definitions
 ```
@@ -48,6 +48,15 @@ flowchart LR
 5. When the job ends, the transcript can be copied or saved as text, SRT or WebVTT.
 
 Opening another file cancels the running job. Each job has an id, and updates from a replaced job are dropped.
+
+## Live captions
+
+Live captions run through the same job and pipeline ([ADR 0007](adr/0007-caption-live-audio-by-re-decoding-speech-in-progress.md)):
+
+1. "Live Captions" captures the source in the `live-source` setting, or the one picked from its menu: `pulsesrc` for the microphone, `pulsesrc device=@DEFAULT_MONITOR@` for system audio. Capture starts once the models are loaded.
+2. The transcriber runs with partial results on (`ParakeetTranscriber::with_partials`). It keeps the audio since the last finished segment, and while the VAD detects speech it re-decodes that audio every second and sends `Event::Partial`.
+3. The window shows the partial text as a dimmed last row, replaced by the next partial or by the finished segment. The list follows new lines unless the user has scrolled back.
+4. Stop sets the capture's stop flag. The stream then ends like a file, the VAD flushes, and the last speech becomes a final line.
 
 ## Subtitle cues
 
