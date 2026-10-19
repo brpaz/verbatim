@@ -100,13 +100,19 @@ impl VerbatimApplication {
             })
             .build();
 
-        self.add_action_entries([action_quit, action_about]);
+        let action_preferences = gio::ActionEntry::builder("preferences")
+            .activate(|app: &Self, _, _| {
+                crate::preferences::present(&app.main_window());
+            })
+            .build();
+        self.add_action_entries([action_quit, action_about, action_preferences]);
     }
 
     // Sets up keyboard shortcuts
     fn setup_accels(&self) {
         self.set_accels_for_action("app.quit", &["<Control>q"]);
         self.set_accels_for_action("win.open", &["<Control>o"]);
+        self.set_accels_for_action("app.preferences", &["<Control>comma"]);
         self.set_accels_for_action("window.close", &["<Control>w"]);
         self.set_accels_for_action("win.show-help-overlay", &["<Control>question"]);
     }

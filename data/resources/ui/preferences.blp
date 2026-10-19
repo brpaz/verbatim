@@ -1,0 +1,19 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.PreferencesDialog preferences_dialog {
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup {
+      title: _("Speech Recognition");
+      description: _("Changing the model downloads it before the next transcription.");
+
+      Adw.ComboRow model_row {
+        title: _("Model");
+      }
+
+      Adw.ComboRow language_row {
+        title: _("Language");
+      }
+    }
+  }
+}

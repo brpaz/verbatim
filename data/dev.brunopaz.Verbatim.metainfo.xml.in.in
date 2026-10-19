@@ -8,7 +8,7 @@
   <description>
     <p>Verbatim turns speech into text, from audio and video files or live from the microphone or system audio. Recognition runs on your computer, so audio never leaves it.</p>
     <ul>
-      <li>Transcribes 25 European languages, with punctuation</li>
+      <li>Transcribes 25 European languages with Parakeet, or about 100 with Whisper</li>
       <li>Shows the transcript as it is recognised, and plays the file from any line</li>
       <li>Captions live audio from the microphone or from whatever the computer plays</li>
       <li>Saves the transcript as text, or as SRT or WebVTT subtitles</li>

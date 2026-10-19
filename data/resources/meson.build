@@ -1,7 +1,7 @@
 # Blueprint UI files, compiled to GtkBuilder XML in the build dir
 blueprints = custom_target(
   'blueprints',
-  input: files('ui/shortcuts.blp', 'ui/window.blp'),
+  input: files('ui/preferences.blp', 'ui/shortcuts.blp', 'ui/window.blp'),
   output: '.',
   command: [
     find_program('blueprint-compiler'),

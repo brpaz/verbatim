@@ -8,7 +8,7 @@ use verbatim_core::{Format, Segment, clock_time, render};
 
 use crate::application::VerbatimApplication;
 use crate::config::{APP_ID, PROFILE};
-use crate::transcription::{self, Input, Job, LiveSource, Update};
+use crate::transcription::{self, Engine, Input, Job, LiveSource, Update};
 
 mod imp {
     use super::*;
@@ -52,7 +52,6 @@ mod imp {
         /// Identifies the current job, so updates from a replaced job are
         /// ignored.
         pub job_id: Cell<u64>,
-        pub models_approved: Cell<bool>,
     }
 
     impl Default for VerbatimApplicationWindow {
@@ -78,7 +77,6 @@ mod imp {
                 segments: RefCell::default(),
                 job: RefCell::default(),
                 job_id: Cell::default(),
-                models_approved: Cell::default(),
             }
         }
     }
@@ -339,11 +337,12 @@ impl VerbatimApplicationWindow {
     }
 
     fn transcribe(&self, input: Input) {
-        let missing = transcription::missing_models(&transcription::model_store());
-        if missing.is_empty() || self.imp().models_approved.get() {
-            self.start_job(input);
+        let engine = transcription::engine_from_settings(&self.imp().settings);
+        let missing = transcription::missing_models(&transcription::model_store(), &engine);
+        if missing.is_empty() {
+            self.start_job(input, engine);
         } else {
-            self.ask_model_download(input, &missing);
+            self.ask_model_download(input, engine, &missing);
         }
     }
 
@@ -381,7 +380,12 @@ impl VerbatimApplicationWindow {
         }
     }
 
-    fn ask_model_download(&self, input: Input, missing: &[&verbatim_models::Model]) {
+    fn ask_model_download(
+        &self,
+        input: Input,
+        engine: Engine,
+        missing: &[&verbatim_models::Model],
+    ) {
         let size = missing.iter().map(|model| model.size()).sum();
         let models = missing
             .iter()
@@ -410,8 +414,7 @@ impl VerbatimApplicationWindow {
                 self,
                 move |_, response| {
                     if response == "download" {
-                        window.imp().models_approved.set(true);
-                        window.start_job(input.clone());
+                        window.start_job(input.clone(), engine.clone());
                     } else {
                         window.close_file();
                     }
@@ -421,13 +424,13 @@ impl VerbatimApplicationWindow {
         dialog.present(Some(self));
     }
 
-    fn start_job(&self, input: Input) {
+    fn start_job(&self, input: Input, engine: Engine) {
         let imp = self.imp();
         let id = imp.job_id.get() + 1;
         imp.job_id.set(id);
 
         let (sender, receiver) = async_channel::bounded(64);
-        imp.job.replace(Some(Job::start(input, sender)));
+        imp.job.replace(Some(Job::start(input, engine, sender)));
         imp.progress_banner.set_title(&gettext("Preparing…"));
         imp.progress_banner.set_revealed(true);
         self.action_set_enabled("win.cancel", true);

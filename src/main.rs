@@ -1,5 +1,6 @@
 mod application;
 mod config;
+mod preferences;
 mod transcription;
 mod window;
 
@@ -42,7 +43,7 @@ fn main() -> glib::ExitCode {
 mod tests {
     use super::*;
 
-    const UI_FILES: [&str; 2] = ["shortcuts.ui", "window.ui"];
+    const UI_FILES: [&str; 3] = ["preferences.ui", "shortcuts.ui", "window.ui"];
 
     /// The bundle path is only known at runtime under `meson test`; plain
     /// `cargo test` has nothing to check and returns early.

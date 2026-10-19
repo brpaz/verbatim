@@ -7,15 +7,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
 
-use gtk::glib;
+use gtk::{gio, glib, prelude::*};
 use verbatim_core::{Error, Event, Segment, Transcriber};
-use verbatim_models::{Model, ModelStore, TRANSCRIBE_MODELS};
-use verbatim_transcribe::{ParakeetTranscriber, SAMPLE_RATE};
-
-/// How often live captions show the speech in progress.
-const PARTIAL_INTERVAL: Duration = Duration::from_secs(1);
+use verbatim_models::{Model, ModelStore};
+pub use verbatim_transcribe::Engine;
+use verbatim_transcribe::{SAMPLE_RATE, SherpaTranscriber};
 
 #[derive(Debug, Clone)]
 pub enum Input {
@@ -73,8 +70,21 @@ pub fn model_store() -> ModelStore {
     ModelStore::new(glib::user_data_dir().join("verbatim").join("models"))
 }
 
-pub fn missing_models(store: &ModelStore) -> Vec<&'static Model> {
-    store.missing(&TRANSCRIBE_MODELS)
+pub fn missing_models(store: &ModelStore, engine: &Engine) -> Vec<&'static Model> {
+    store.missing(engine.models())
+}
+
+/// The engine chosen in the `speech-model` and `language` settings.
+pub fn engine_from_settings(settings: &gio::Settings) -> Engine {
+    match settings.string("speech-model").as_str() {
+        "whisper" => {
+            let language = settings.string("language");
+            Engine::Whisper {
+                language: (!language.is_empty()).then(|| language.to_string()),
+            }
+        }
+        _ => Engine::Parakeet,
+    }
 }
 
 /// A running transcription. Dropping it does not stop the thread; call
@@ -88,12 +98,12 @@ pub struct Job {
 impl Job {
     /// Transcribes `input`, downloading missing models first. Updates end
     /// with exactly one of `Finished`, `Cancelled` or `Failed`.
-    pub fn start(input: Input, sender: async_channel::Sender<Update>) -> Self {
+    pub fn start(input: Input, engine: Engine, sender: async_channel::Sender<Update>) -> Self {
         let cancelled = Arc::new(AtomicBool::new(false));
         let stopped = Arc::new(AtomicBool::new(false));
         let flags = (cancelled.clone(), stopped.clone());
         thread::spawn(move || {
-            let last = match run(&input, &flags.0, flags.1, &sender) {
+            let last = match run(&input, &engine, &flags.0, flags.1, &sender) {
                 Ok(()) => Update::Finished,
                 Err(Failure::Cancelled) => Update::Cancelled,
                 Err(Failure::Other(message)) => {
@@ -134,6 +144,7 @@ impl From<Error> for Failure {
 
 fn run(
     input: &Input,
+    engine: &Engine,
     cancelled: &AtomicBool,
     stopped: Arc<AtomicBool>,
     sender: &async_channel::Sender<Update>,
@@ -149,7 +160,7 @@ fn run(
 
     let store = model_store();
     store
-        .install(&TRANSCRIBE_MODELS, |done, total| {
+        .install(engine.models(), |done, total| {
             send(Update::Downloading(done as f32 / total.max(1) as f32))
         })
         .map_err(|err| match err {
@@ -159,14 +170,14 @@ fn run(
 
     let _ = send(Update::Transcribing(0.0));
     let threads = thread::available_parallelism().map_or(1, |n| (n.get() / 2).max(1));
-    let mut transcriber = ParakeetTranscriber::load(&store, threads as i32)?;
+    let mut transcriber = SherpaTranscriber::load(&store, engine, threads as i32)?;
     verbatim_audio::init().map_err(audio_failure)?;
     let mut audio = match input {
         Input::File(path) => {
             verbatim_audio::Decoder::open(path, SAMPLE_RATE).map_err(audio_failure)?
         }
         Input::Live(source) => {
-            transcriber = transcriber.with_partials(PARTIAL_INTERVAL);
+            transcriber = transcriber.with_partials(engine.partial_interval());
             let capture =
                 verbatim_audio::Decoder::capture(source.gst_source(), SAMPLE_RATE, stopped)
                     .map_err(audio_failure)?;

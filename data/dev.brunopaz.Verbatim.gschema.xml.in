@@ -18,6 +18,20 @@
       <summary>Live captions source</summary>
       <description>What live captions listen to: the microphone or the system audio</description>
     </key>
+    <key name="speech-model" type="s">
+      <choices>
+        <choice value="parakeet"/>
+        <choice value="whisper"/>
+      </choices>
+      <default>"parakeet"</default>
+      <summary>Speech recognition model</summary>
+      <description>Parakeet is fast and covers 25 European languages; Whisper is slower, covers about 100 languages and can be told the language</description>
+    </key>
+    <key name="language" type="s">
+      <default>""</default>
+      <summary>Language of the speech</summary>
+      <description>ISO 639-1 code passed to Whisper, or empty to detect it. Parakeet always detects the language.</description>
+    </key>
     <key name="is-maximized" type="b">
       <default>false</default>
       <summary>Window maximized state</summary>
