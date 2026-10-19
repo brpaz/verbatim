@@ -1,0 +1,15 @@
+[package]
+name = "verbatim-audio"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gst.workspace = true
+gst-app.workspace = true
+thiserror.workspace = true
+verbatim-core.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

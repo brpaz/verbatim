@@ -14,6 +14,7 @@ base_id = 'dev.brunopaz.Verbatim'
 dependency('glib-2.0', version: '>= 2.66')
 dependency('gio-2.0', version: '>= 2.66')
 dependency('gtk4', version: '>= 4.20')
+dependency('gstreamer-1.0', version: '>= 1.20')
 dependency('libadwaita-1', version: '>= 1.8')
 
 find_program('glib-compile-resources')

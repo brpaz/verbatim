@@ -11,7 +11,9 @@
         "--share=ipc",
         "--socket=fallback-x11",
         "--socket=wayland",
-        "--device=dri"
+        "--device=dri",
+        "--socket=pulseaudio",
+        "--share=network"
     ],
     "command": "verbatim",
     "build-options": {
@@ -43,10 +45,29 @@
             "name": "verbatim",
             "buildsystem": "meson",
             "run-tests": true,
+            "build-options": {
+                "env": {
+                    "SHERPA_ONNX_ARCHIVE_DIR": "/run/build/verbatim/sherpa-onnx"
+                }
+            },
             "sources": [
                 {
                     "type": "dir",
                     "path": "../"
+                },
+                {
+                    "type": "file",
+                    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-static-lib.tar.bz2",
+                    "sha256": "e1fdc5b67530e15741ef897fa5ffff297056f3bf0c6d829a27af9225a4c4b5a6",
+                    "dest": "sherpa-onnx",
+                    "only-arches": ["x86_64"]
+                },
+                {
+                    "type": "file",
+                    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-aarch64-static-lib.tar.bz2",
+                    "sha256": "77983e3cf29aa60f2e531d249dbd01d15596530550c8db2e9e02fc6a655da6bb",
+                    "dest": "sherpa-onnx",
+                    "only-arches": ["aarch64"]
                 }
             ]
         }

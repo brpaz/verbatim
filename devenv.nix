@@ -1,5 +1,14 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 
+let
+  # Decoders for common audio and video formats, and GTK's media playback.
+  gstPlugins = with pkgs.gst_all_1; [
+    gst-plugins-base
+    gst-plugins-good
+    gst-plugins-bad
+    gst-libav
+  ];
+in
 {
   # https://devenv.sh/basics/
   dotenv.enable = true;
@@ -23,7 +32,10 @@
     gitleaks
     pkg-config
     nfpm
-  ];
+    gst_all_1.gstreamer
+  ] ++ gstPlugins;
+
+  env.GST_PLUGIN_SYSTEM_PATH_1_0 = lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" gstPlugins;
 
   # https://devenv.sh/languages/
   languages.rust = {
