@@ -42,7 +42,7 @@ flowchart LR
 3. `transcription::Job` starts a thread ([ADR 0005](adr/0005-run-transcription-on-a-thread-in-the-app.md)) that:
    - installs missing models into `$XDG_DATA_HOME/verbatim/models`,
    - decodes the file with `verbatim_audio::Decoder`, a chunk at a time,
-   - feeds 512-sample windows to Silero VAD, and each speech segment to Parakeet ([ADR 0003](adr/0003-transcribe-with-parakeet-via-sherpa-onnx.md)),
+   - feeds 512-sample windows to Silero VAD, and each speech segment to Parakeet ([ADR 0003](adr/0003-transcribe-with-parakeet-via-sherpa-onnx.md)); a segment under 6 seconds is recognised after the last 3 seconds of the previous one, so Parakeet keeps the language, and the context's words are dropped by their timestamps,
    - sends each `Segment`, with its word timings, to the main loop as soon as it is recognised.
 4. The window appends a row per segment. Activating a row seeks playback to it, and the row playing is kept selected.
 5. When the job ends, the transcript can be copied or saved as text, SRT or WebVTT.
