@@ -20,6 +20,6 @@ NVIDIA's Parakeet TDT models (the multilingual v3 covers 25 European languages) 
 - **Wrapping an existing CLI (ownscribe, faster-whisper scripts)**: brings a Python runtime into the Flatpak, adds process startup per file and leaves only text output to parse.
 
 ## Consequences
-- Languages outside Parakeet's set are unsupported until a second transcriber exists.
+- Languages outside Parakeet's set are unsupported until a second transcriber exists. ADR 0008 adds Whisper for them.
 - sherpa-onnx's build script downloads prebuilt static libraries. The Flatpak manifests pin those archives by checksum, and their version must follow the `sherpa-onnx` crate version.
 - The VAD keeps silence out of the recogniser, which cuts both CPU time and hallucinations, and its segments double as transcript lines.

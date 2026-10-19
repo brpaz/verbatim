@@ -15,12 +15,12 @@
 ## Features
 
 - Transcribes audio and video files on your computer: nothing is uploaded
-- 25 European languages, with punctuation, using NVIDIA Parakeet TDT v3
+- 25 European languages with NVIDIA Parakeet TDT v3, or about 100 with OpenAI Whisper Large v3 Turbo, which can be told the language
 - Shows the transcript as it is recognised, and plays the file from any line
 - Captions live audio from the microphone or from whatever the computer plays
 - Saves the transcript as text, or as SRT or WebVTT subtitles
 
-The speech models (about 670 MB) are downloaded once, on first use, after asking.
+The speech models (about 670 MB for Parakeet, 1 GB for Whisper) are downloaded once, on first use, after asking.
 
 ## Install
 

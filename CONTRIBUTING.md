@@ -125,6 +125,8 @@ VERBATIM_TEST_AUDIO=/path/to/speech.wav \
   cargo test -p verbatim-transcribe -- --include-ignored
 ```
 
+The Whisper test also needs Whisper in that model store; choose Whisper in Preferences and transcribe once to download it.
+
 `cargo test -p verbatim-audio -- --include-ignored` also captures briefly from the default microphone and system audio, and needs a running PipeWire or PulseAudio server.
 
 ### Cleaning Build Artifacts
