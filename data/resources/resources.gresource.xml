@@ -4,5 +4,8 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/shortcuts.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/window.ui</file>
     <file compressed="true">style.css</file>
+    <!-- GTK adds icons/ under the resource base path to the icon theme, so the
+         status page finds the app icon even when the app is not installed. -->
+    <file compressed="true" preprocess="xml-stripblanks" alias="icons/scalable/apps/dev.brunopaz.Verbatim-symbolic.svg">dev.brunopaz.Verbatim-symbolic.svg</file>
   </gresource>
 </gresources>
