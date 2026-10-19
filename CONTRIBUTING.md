@@ -137,7 +137,7 @@ To clean all build artifacts:
 task clean
 ```
 
-This removes the `_build/` directory and any other generated files.
+This removes the `_build/` and `_build-release/` directories.
 
 ## Code Quality Tools
 
@@ -204,6 +204,7 @@ This project uses [Task](https://taskfile.dev/) for common development tasks. Ru
 | `task setup` | Configure Meson build (development profile) |
 | `task build` | Build the project |
 | `task run` | Build and run the application |
+| `task install` / `task install:release` | Install the development build (from `_build/`) or the release build (from `_build-release/`); both install `/usr/bin/verbatim`, so uninstall one before installing the other |
 | `task test` | Run all tests |
 | `task test:cargo` | Run Cargo tests directly |
 | `task clippy` | Run Clippy lints |

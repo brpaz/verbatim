@@ -1,6 +1,9 @@
 version: "3"
 vars:
   BUILD_DIR: _build
+  # Release builds have their own directory: Meson fixes the profile when a
+  # directory is first configured.
+  RELEASE_BUILD_DIR: _build-release
   INSTALL_DIR: _install
   FLATPAK_MANIFEST: build-aux/dev.brunopaz.Verbatim.Devel.json
   APP_ID: "dev.brunopaz.Verbatim.Devel"
@@ -14,9 +17,11 @@ tasks:
       - test -d {{.BUILD_DIR}}
 
   setup:release:
-    desc: Configure the Meson build directory (release profile)
+    desc: Configure the release Meson build directory
     cmds:
-      - meson setup {{.BUILD_DIR}} --prefix=/usr
+      - meson setup {{.RELEASE_BUILD_DIR}} --prefix=/usr
+    status:
+      - test -d {{.RELEASE_BUILD_DIR}}
 
   build:
     desc: Build the project with Meson (development)
@@ -28,7 +33,7 @@ tasks:
     desc: Build the project in release mode
     deps: [setup:release]
     cmds:
-      - meson compile -C {{.BUILD_DIR}}
+      - meson compile -C {{.RELEASE_BUILD_DIR}}
 
   run:
     desc: Build and run the application
@@ -90,20 +95,31 @@ tasks:
       - ninja -C {{.BUILD_DIR}} verbatim-update-po
 
   install:
-    desc: Install the application (requires sudo or appropriate prefix)
+    desc: Install the development build (requires sudo or appropriate prefix)
     deps: [build]
     cmds:
       - meson install -C {{.BUILD_DIR}}
 
   uninstall:
-    desc: Uninstall the application
+    desc: Uninstall the development build
     cmds:
       - ninja -C {{.BUILD_DIR}} uninstall
 
-  clean:
-    desc: Remove the Meson build directory
+  install:release:
+    desc: Install the release build (requires sudo or appropriate prefix). Both builds install the same binary, so uninstall the other first.
+    deps: [build:release]
     cmds:
-      - rm -rf {{.BUILD_DIR}}
+      - meson install -C {{.RELEASE_BUILD_DIR}}
+
+  uninstall:release:
+    desc: Uninstall the release build
+    cmds:
+      - ninja -C {{.RELEASE_BUILD_DIR}} uninstall
+
+  clean:
+    desc: Remove the Meson build directories
+    cmds:
+      - rm -rf {{.BUILD_DIR}} {{.RELEASE_BUILD_DIR}}
 
   clean:cargo:
     desc: Clean Cargo build artifacts
@@ -172,18 +188,16 @@ tasks:
 
   package:deb:
     desc: Build and package a .deb from a release build (requires nfpm on $PATH)
-    deps: [setup:release]
+    deps: [build:release]
     cmds:
-      - meson compile -C {{.BUILD_DIR}}
       - rm -rf {{.INSTALL_DIR}}
-      - DESTDIR=$PWD/{{.INSTALL_DIR}} meson install -C {{.BUILD_DIR}}
+      - DESTDIR=$PWD/{{.INSTALL_DIR}} meson install -C {{.RELEASE_BUILD_DIR}}
       - VERSION=$(cat VERSION) nfpm package --config nfpm.yaml --packager deb --target verbatim.deb
 
   package:rpm:
     desc: Build and package a .rpm from a release build (requires nfpm on $PATH)
-    deps: [setup:release]
+    deps: [build:release]
     cmds:
-      - meson compile -C {{.BUILD_DIR}}
       - rm -rf {{.INSTALL_DIR}}
-      - DESTDIR=$PWD/{{.INSTALL_DIR}} meson install -C {{.BUILD_DIR}}
+      - DESTDIR=$PWD/{{.INSTALL_DIR}} meson install -C {{.RELEASE_BUILD_DIR}}
       - VERSION=$(cat VERSION) nfpm package --config nfpm.yaml --packager rpm --target verbatim.rpm

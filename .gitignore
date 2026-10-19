@@ -1,6 +1,7 @@
 /target/
 /build/
 /_build/
+/_build-release/
 /_install/
 /builddir/
 *.deb
