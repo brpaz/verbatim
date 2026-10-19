@@ -5,12 +5,20 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/brpaz/verbatim/ci.yml?branch=main&label=CI&logo=github&style=for-the-badge)](https://github.com/brpaz/verbatim/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE.md)
 [![Flatpak](https://img.shields.io/badge/flatpak-ready-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://flatpak.org)
+[![Vibe coded with Claude Opus 5.5](https://img.shields.io/badge/vibe%20coded%20with-Claude%20Opus%205.5-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-disclosure)
 
 <div align="center">
 
 ![Main window](data/resources/screenshots/screenshot1.png "Main window")
 
 </div>
+
+## AI Disclosure
+
+> [!WARNING]
+> Verbatim is vibe coded: most of its code, tests, documentation, build configuration and icons were written by Claude Opus 5.5 (Anthropic), directed and reviewed by the maintainer. Review the code before relying on it, and expect bugs.
+
+Transcripts and live captions come from speech recognition models and can be wrong, especially for names, short phrases and accented speech, so check anything important against the audio. Audio is processed on your computer and never uploaded; the only network access is the one-time model download.
 
 ## Features
 
