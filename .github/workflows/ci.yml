@@ -15,7 +15,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install system dependencies
-        run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gettext desktop-file-utils appstream
+        run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gstreamer1-devel gstreamer1-plugins-base gstreamer1-plugins-good gettext desktop-file-utils appstream
 
       - uses: actions/checkout@v7.0.1
       - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
@@ -42,7 +42,7 @@ jobs:
       # validate-desktop/validate-appdata tests actually run instead of
       # silently no-op'ing (see data/meson.build's `required: false` finds).
       - name: Install system dependencies
-        run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gettext desktop-file-utils appstream
+        run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gstreamer1-devel gstreamer1-plugins-base gstreamer1-plugins-good gettext desktop-file-utils appstream
 
       - uses: actions/checkout@v7.0.1
       - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
@@ -134,7 +134,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y git curl ca-certificates meson ninja-build gcc g++ pkg-config libgtk-4-dev libadwaita-1-dev blueprint-compiler libglib2.0-dev gettext desktop-file-utils appstream
+          apt-get install -y git curl ca-certificates meson ninja-build gcc g++ pkg-config libgtk-4-dev libadwaita-1-dev blueprint-compiler libglib2.0-dev libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gettext desktop-file-utils appstream
 
       - uses: actions/checkout@v7.0.1
       - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
@@ -174,7 +174,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          dnf install -y meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gettext desktop-file-utils appstream curl
+          dnf install -y meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gstreamer1-devel gstreamer1-plugins-base gstreamer1-plugins-good gettext desktop-file-utils appstream curl
 
       - name: Install Rust
         run: |

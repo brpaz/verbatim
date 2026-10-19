@@ -29,8 +29,21 @@ overrides:
       - libgtk-4-1
       - libadwaita-1-0 (>= 1.8)
       - libglib2.0-0
+      - libgstreamer1.0-0
+      - gstreamer1.0-plugins-base
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-pulseaudio
+    # Decoders for MP3, AAC and most video files.
+    recommends:
+      - gstreamer1.0-libav
   rpm:
     depends:
       - gtk4
       - libadwaita >= 1.8
       - glib2
+      - gstreamer1
+      - gstreamer1-plugins-base
+      - gstreamer1-plugins-good
+    # Decoders for MP3, AAC and most video files.
+    recommends:
+      - gstreamer1-plugin-libav
