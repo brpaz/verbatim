@@ -117,6 +117,14 @@ task test
 
 This command runs `meson test` to execute all tests via the Meson test framework.
 
+Tests that run the real speech models are ignored by default. To run them, point them at an installed model store and a file with English speech:
+
+```bash
+VERBATIM_MODELS_DIR=~/.local/share/verbatim/models \
+VERBATIM_TEST_AUDIO=/path/to/speech.wav \
+  cargo test -p verbatim-transcribe -- --include-ignored
+```
+
 ### Cleaning Build Artifacts
 
 To clean all build artifacts:

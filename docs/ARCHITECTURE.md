@@ -1,241 +1,63 @@
 # Architecture
 
-This document describes the architecture of the GTK application template.
+Verbatim is a GTK4 and libadwaita app in Rust that transcribes audio and video files with local speech recognition. Meson builds it around Cargo ([ADR 0002](adr/0002-build-with-meson-around-cargo.md)), and the UI is written in Blueprint ([ADR 0001](adr/0001-use-libadwaita-and-blueprint.md)).
 
-## Overview
-
-The template provides a modern GTK4 application using:
-- **GTK4** and **libadwaita** with GObject subclassing
-- **Blueprint** for UI definitions, compiled to GtkBuilder XML at build time
-- **Meson** build system
-- **Rust** with glib/gio bindings
-
-## Project Structure
+## Workspace
 
 ```
-├── src/
-│   ├── main.rs        # Entry point
-│   ├── application.rs # Application subclass
-│   ├── window.rs      # Main window subclass
-│   └── config.rs      # Build-time configuration
-├── data/
-│   └── resources/
-│       ├── ui/        # Blueprint (.blp) UI definitions
-│       └── style.css # Application styles
-├── meson.build        # Meson build definition
-└── Cargo.toml        # Rust crate definition
+├── src/                  # GTK app (crate `verbatim`)
+│   ├── main.rs           # Logging, i18n, resources, application start
+│   ├── application.rs    # AdwApplication: actions, accelerators, opening files
+│   ├── window.rs         # Main window: file loading, transcript list, playback, export
+│   ├── transcription.rs  # Background transcription job
+│   └── config.rs         # Build-time values from Meson (MESON_* variables)
+├── crates/
+│   ├── core/             # Domain types, Transcriber contract, TXT/SRT/WebVTT export
+│   ├── models/           # Model catalog, verified resumable downloads
+│   ├── audio/            # GStreamer file decoding to 16 kHz mono
+│   └── transcribe/       # Silero VAD + Parakeet TDT via sherpa-onnx
+└── data/resources/ui/    # Blueprint UI definitions
 ```
 
-## Application Model
+`verbatim-core` depends on no audio, inference or UI library. The other crates implement or use its contracts, and the app wires them together.
 
-### Entry Point (`main.rs`)
-
-The entry point initializes:
-1. **Logging** - `tracing_subscriber` for debug output
-2. **Internationalization** - `gettextrs` for translations
-3. **Resources** - GTK resource bundle loading
-4. **Application instance** - Creates and runs the application
-
-### Application Subclass
-
-`application.rs` defines `{{ app_main_class }}Application`:
-
-- Extends `adw::Application`
-- Manages the main window lifecycle
-- Sets up actions, accelerators, and CSS
-- Provides the about dialog
-
-```
-{{ app_main_class }}Application
-    ├── activate()      # Creates/shows main window on activation
-    ├── startup()       # Sets up CSS, actions, accelerators
-    └── run()           # Runs the application
+```mermaid
+flowchart LR
+    app[verbatim app] --> core[verbatim-core]
+    app --> models[verbatim-models]
+    app --> audio[verbatim-audio]
+    app --> transcribe[verbatim-transcribe]
+    audio --> core
+    transcribe --> core
+    transcribe --> models
+    audio -.-> gst[(GStreamer)]
+    transcribe -.-> sherpa[(sherpa-onnx / ONNX Runtime)]
+    models -.-> hf[(Hugging Face, GitHub releases)]
 ```
 
-### Window Subclass
+## Transcribing a file
 
-`window.rs` defines `{{ app_main_class }}ApplicationWindow`:
+1. A file arrives from the Open dialog, a drop on the window, or the command line and "Open With" (`HANDLES_OPEN`).
+2. The window loads it into a `GtkMediaFile` for playback, and asks to download the models if any are missing ([ADR 0006](adr/0006-download-models-on-first-use.md)).
+3. `transcription::Job` starts a thread ([ADR 0005](adr/0005-run-transcription-on-a-thread-in-the-app.md)) that:
+   - installs missing models into `$XDG_DATA_HOME/verbatim/models`,
+   - decodes the file with `verbatim_audio::Decoder`, a chunk at a time,
+   - feeds 512-sample windows to Silero VAD, and each speech segment to Parakeet ([ADR 0003](adr/0003-transcribe-with-parakeet-via-sherpa-onnx.md)),
+   - sends each `Segment`, with its word timings, to the main loop as soon as it is recognised.
+4. The window appends a row per segment. Activating a row seeks playback to it, and the row playing is kept selected.
+5. When the job ends, the transcript can be copied or saved as text, SRT or WebVTT.
 
-- Extends `adw::ApplicationWindow`
-- Uses `#[derive(gtk::CompositeTemplate)]` for UI binding
-- Saves/restores window size via GSettings
-- Supports devel profile CSS class
+Opening another file cancels the running job. Each job has an id, and updates from a replaced job are dropped.
 
-```
-{{ app_main_class }}ApplicationWindow
-    ├── new()           # Constructor
-    ├── load_window_size()  # Restore from GSettings
-    └── save_window_size() # Persist to GSettings
-```
+## Subtitle cues
 
-## Configuration
+`verbatim_core::render` builds cues from word timings. A cue never spans two VAD segments, holds at most two lines of 42 characters, lasts at most 7 seconds, and ends at a sentence once it holds 24 characters. Segments without word timings become one cue each.
 
-`config.rs` provides build-time configuration via the `config_var!` macro:
+## Models
 
-```rust
-config_var!(APP_ID);      // Application ID
-config_var!(PROFILE);    // Build profile (Devel/Release)
-config_var!(VERSION);    // Version string
-config_var!(LOCALEDIR); // Translation directory
-config_var!(PKGDATADIR);// Data directory
-```
+| Model | Purpose | License |
+|---|---|---|
+| Silero VAD | Splits audio into speech segments | MIT |
+| NVIDIA Parakeet TDT 0.6B v3 (int8) | Speech recognition, 25 European languages | CC-BY-4.0 |
 
-These are set by Meson at compile time via `MESON_<VAR>` environment variables.
-
-## UI Definition
-
-Windows use [Blueprint](https://gnome.pages.gitlab.gnome.org/blueprint-compiler/) templates (`data/resources/ui/*.blp`). Meson runs `blueprint-compiler batch-compile` and bundles the resulting GtkBuilder XML into the GResource:
-
-```blueprint
-template ${{ app_main_class }}ApplicationWindow: Adw.ApplicationWindow {
-  content: Adw.ToolbarView {
-    [top]
-    Adw.HeaderBar headerbar {}
-
-    content: /* Window content */;
-  };
-}
-```
-
-### Template Child Access
-
-Child widgets are accessed via `#[template_child]`:
-
-```rust
-#[derive(Debug, gtk::CompositeTemplate)]
-#[template(resource = "/com/example/myapp/ui/window.ui")]
-pub struct MyAppWindow {
-    #[template_child]
-    pub headerbar: TemplateChild<gtk::HeaderBar>,
-}
-```
-
-## Actions and Accelerators
-
-### GTK Actions
-
-Actions are defined using `gio::ActionEntry`:
-
-```rust
-let action_quit = gio::ActionEntry::builder("quit")
-    .activate(|app, _, _| {
-        app.quit();
-    })
-    .build();
-self.add_action_entries([action_quit]);
-```
-
-### Accelerators
-
-Keyboard shortcuts are set via `set_accels_for_action()`:
-
-```rust
-self.set_accels_for_action("app.quit", &["<Control>q"]);
-self.set_accels_for_action("window.close", &["<Control>w"]);
-```
-
-## CSS Styling
-
-CSS is loaded via `GtkCssProvider`:
-
-```rust
-fn setup_css(&self) {
-    let provider = gtk::CssProvider::new();
-    provider.load_from_resource("/com/example/myapp/style.css");
-    if let Some(display) = gdk::Display::default() {
-        gtk::style_context_add_provider_for_display(
-            &display,
-            &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
-    }
-}
-```
-
-## Internationalization
-
-Translations use `gettextrs`:
-
-```rust
-use gettextrs::gettext;
-
-// Mark strings for translation
-let label = gettext("Hello world!");
-```
-
-Translation files (.po) are compiled to .mo files in `data/locale/`.
-
-## Build System
-
-### Meson Integration
-
-Meson builds the project and generates:
-- `gresource.xml` - GTK resource bundle manifest
-- `config.rs` - Build variables injected at compile time
-- Compiled translations (.mo files)
-
-### Resource Compilation
-
-UI files and CSS are compiled into a GTK resource bundle:
-- Blueprint files are compiled to XML, then embedded in the binary
-- No external UI files needed at runtime
-
-## Extension Points
-
-To extend the application:
-
-1. **Add new windows** - Create new window.rs module + Blueprint file
-2. **Add actions** - Add `gio::ActionEntry` in application.rs
-3. **Add accelerators** - Add in `setup_accels()`
-4. **Add CSS** - Extend style.css
-5. **Add resources** - Add to meson.build
-
-## Key Dependencies
-
-| Package | Purpose |
-|---------|----------|
-| gtk | GTK4 bindings |
-| adw (libadwaita) | libadwaita bindings |
-| gio | GIO library |
-| glib | GLib bindings |
-| gettextrs | Internationalization |
-| tracing | Logging |
-| tracing-subscriber | Logging output |
-
-## Runtime Flow
-
-```
-main()
-  ├── Initialize tracing logger
-  ├── Load translations (gettextrs)
-  ├── Load GTK resources
-  ├── Create Application instance
-  └── Application::run()
-      └── GtkApplication::activate()
-          ├── Create main window
-          └── Present window
-```
-
-## Data Flow
-
-```
-User Input
-    │
-    ▼
-GTK Event (signal)
-    │
-    ├── Action (gio::Action)
-    │   └── Handler closure
-    │
-    └── Subclass method
-        └── Update model
-            │
-            ▼
-        Notify property change
-            │
-            ▼
-        Widget emits signal
-            │
-            ▼
-        UI updates via binding
-```
+The catalog in `crates/models` pins each file's URL to a commit, with its size and SHA-256. A model counts as installed when its files exist with the expected sizes. Checksums are verified once, at download.

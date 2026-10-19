@@ -14,9 +14,12 @@
 
 ## Features
 
-- Feature 1
-- Feature 2
-- Feature 3
+- Transcribes audio and video files on your computer: nothing is uploaded
+- 25 European languages, with punctuation, using NVIDIA Parakeet TDT v3
+- Shows the transcript as it is recognised, and plays the file from any line
+- Saves the transcript as text, or as SRT or WebVTT subtitles
+
+The speech models (about 670 MB) are downloaded once, on first use, after asking.
 
 ## Install
 
