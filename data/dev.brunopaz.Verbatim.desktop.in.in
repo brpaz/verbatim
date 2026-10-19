@@ -1,13 +1,13 @@
 [Desktop Entry]
 Name=Verbatim
-# FIXME Set the project summary
-Comment=Transcribe audio files and caption live audio with local speech-to-text models
+Comment=Transcribe audio and video files with local speech recognition
 Type=Application
-Exec=verbatim
+Exec=verbatim %F
 Terminal=false
-Categories=GNOME;GTK;Development;
+Categories=GNOME;GTK;AudioVideo;Audio;Utility;
+MimeType=audio/aac;audio/flac;audio/mp4;audio/mpeg;audio/ogg;audio/opus;audio/wav;audio/webm;audio/x-flac;audio/x-m4a;audio/x-vorbis+ogg;audio/x-wav;video/mp4;video/ogg;video/quicktime;video/webm;video/x-matroska;
 # Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-Keywords=Gnome;GTK;
+Keywords=transcribe;transcription;speech;subtitles;captions;dictation;
 # Translators: Do NOT translate or transliterate this text (this is an icon file name)!
 Icon=@icon@
 StartupNotify=true

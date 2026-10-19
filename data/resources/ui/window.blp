@@ -4,10 +4,12 @@ using Adw 1;
 menu primary_menu {
   section {
     item {
-      label: _("_Preferences");
-      action: "app.preferences";
+      label: _("_Open File…");
+      action: "win.open";
     }
+  }
 
+  section {
     item {
       label: _("_Keyboard Shortcuts");
       action: "win.show-help-overlay";
@@ -20,37 +22,160 @@ menu primary_menu {
   }
 }
 
-template $VerbatimApplicationWindow: Adw.ApplicationWindow {
-  width-request: 360;
-  height-request: 200;
+menu export_menu {
+  section {
+    item {
+      label: _("Save as _Text");
+      action: "win.export";
+      target: "txt";
+    }
 
-  Adw.Breakpoint {
-    condition ("max-width: 450sp")
+    item {
+      label: _("Save as _SubRip Subtitles (SRT)");
+      action: "win.export";
+      target: "srt";
+    }
 
-    setters {
-      label.wrap: true;
-      label.justify: center;
+    item {
+      label: _("Save as _WebVTT Subtitles");
+      action: "win.export";
+      target: "vtt";
     }
   }
 
-  content: Adw.ToolbarView {
-    [top]
-    Adw.HeaderBar headerbar {
-      [end]
-      MenuButton appmenu_button {
-        icon-name: "open-menu-symbolic";
-        menu-model: primary_menu;
-        primary: true;
-        tooltip-text: _("Main Menu");
+  section {
+    item {
+      label: _("_Copy Text");
+      action: "win.copy";
+    }
+  }
+}
+
+template $VerbatimApplicationWindow: Adw.ApplicationWindow {
+  width-request: 360;
+  height-request: 294;
+  title: _("Verbatim");
+
+  content: Adw.ToastOverlay toast_overlay {
+    Adw.ToolbarView {
+      [top]
+      Adw.HeaderBar headerbar {
+        title-widget: Adw.WindowTitle window_title {
+          title: _("Verbatim");
+        };
+
+        [start]
+        Button open_button {
+          icon-name: "document-open-symbolic";
+          tooltip-text: _("Open File");
+          action-name: "win.open";
+        }
+
+        [end]
+        MenuButton appmenu_button {
+          icon-name: "open-menu-symbolic";
+          menu-model: primary_menu;
+          primary: true;
+          tooltip-text: _("Main Menu");
+        }
+
+        [end]
+        MenuButton export_button {
+          icon-name: "document-save-symbolic";
+          menu-model: export_menu;
+          tooltip-text: _("Export");
+          visible: false;
+        }
+      }
+
+      [top]
+      Adw.Banner progress_banner {
+        button-label: _("_Cancel");
+        action-name: "win.cancel";
+      }
+
+      [top]
+      ProgressBar progress_bar {
+        visible: false;
+
+        styles [
+          "osd",
+        ]
+      }
+
+      content: Stack stack {
+        transition-type: crossfade;
+
+        StackPage {
+          name: "empty";
+
+          child: Adw.StatusPage {
+            icon-name: "dev.brunopaz.Verbatim-symbolic";
+            title: _("Transcribe Audio");
+            description: _("Open or drop an audio or video file. Speech is recognised on this computer.");
+
+            child: Button {
+              label: _("_Open File…");
+              use-underline: true;
+              halign: center;
+              action-name: "win.open";
+
+              styles [
+                "pill",
+                "suggested-action",
+              ]
+            };
+          };
+        }
+
+        StackPage {
+          name: "no-speech";
+
+          child: Adw.StatusPage {
+            icon-name: "microphone-disabled-symbolic";
+            title: _("No Speech Found");
+            description: _("The file has no speech that could be recognised.");
+          };
+        }
+
+        StackPage {
+          name: "transcript";
+
+          child: ScrolledWindow {
+            hscrollbar-policy: never;
+            vexpand: true;
+
+            child: Adw.Clamp {
+              maximum-size: 800;
+              margin-top: 12;
+              margin-bottom: 12;
+              margin-start: 12;
+              margin-end: 12;
+
+              child: ListBox segment_list {
+                valign: start;
+                selection-mode: single;
+                activate-on-single-click: true;
+
+                styles [
+                  "boxed-list",
+                ]
+              };
+            };
+          };
+        }
+      };
+
+      [bottom]
+      ActionBar media_bar {
+        revealed: false;
+
+        [center]
+        MediaControls media_controls {
+          hexpand: true;
+          width-request: 300;
+        }
       }
     }
-
-    content: Label label {
-      label: _("Hello world!");
-
-      styles [
-        "title-header",
-      ]
-    };
   };
 }

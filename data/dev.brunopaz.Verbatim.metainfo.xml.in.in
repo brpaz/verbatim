@@ -4,9 +4,14 @@
   <metadata_license>CC0</metadata_license>
   <project_license>MIT</project_license>
   <name>Verbatim</name>
-  <summary>Transcribe audio files and caption live audio with local speech-to-text models</summary>
+  <summary>Transcribe audio and video with local speech recognition</summary>
   <description>
-    <p>Transcribe audio files and caption live audio with local speech-to-text models</p>
+    <p>Verbatim turns speech in audio and video files into text. Recognition runs on your computer, so recordings never leave it.</p>
+    <ul>
+      <li>Transcribes 25 European languages, with punctuation</li>
+      <li>Shows the transcript as it is recognised, and plays the file from any line</li>
+      <li>Saves the transcript as text, or as SRT or WebVTT subtitles</li>
+    </ul>
   </description>
   <screenshots>
     <screenshot type="default">

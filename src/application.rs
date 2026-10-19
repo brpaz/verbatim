@@ -47,6 +47,13 @@ mod imp {
             app.main_window().present();
         }
 
+        fn open(&self, files: &[gio::File], _hint: &str) {
+            self.activate();
+            if let Some(file) = files.first() {
+                self.obj().main_window().open_file(file.clone());
+            }
+        }
+
         fn startup(&self) {
             debug!("GtkApplication<VerbatimApplication>::startup");
             self.parent_startup();
@@ -93,19 +100,13 @@ impl VerbatimApplication {
             })
             .build();
 
-        // Preferences
-        let action_preferences = gio::ActionEntry::builder("preferences")
-            .activate(|app: &Self, _, _| {
-                app.show_preferences();
-            })
-            .build();
-        self.add_action_entries([action_quit, action_about, action_preferences]);
+        self.add_action_entries([action_quit, action_about]);
     }
 
     // Sets up keyboard shortcuts
     fn setup_accels(&self) {
         self.set_accels_for_action("app.quit", &["<Control>q"]);
-        self.set_accels_for_action("app.preferences", &["<Control>comma"]);
+        self.set_accels_for_action("win.open", &["<Control>o"]);
         self.set_accels_for_action("window.close", &["<Control>w"]);
         self.set_accels_for_action("win.show-help-overlay", &["<Control>question"]);
     }
@@ -125,14 +126,6 @@ impl VerbatimApplication {
     fn authors() -> Vec<&'static str> {
         // Authors are defined in Cargo.toml
         env!("CARGO_PKG_AUTHORS").split(":").collect()
-    }
-
-    fn show_preferences(&self) {
-        let builder = gtk::Builder::from_resource("/dev/brunopaz/Verbatim/ui/preferences.ui");
-        let dialog: adw::PreferencesDialog = builder
-            .object("preferences_dialog")
-            .expect("preferences_dialog is defined in preferences.blp");
-        dialog.present(Some(&self.main_window()));
     }
 
     fn show_about_dialog(&self) {
@@ -166,6 +159,7 @@ impl Default for VerbatimApplication {
         glib::Object::builder()
             .property("application-id", *APP_ID)
             .property("resource-base-path", "/dev/brunopaz/Verbatim/")
+            .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
             .build()
     }
 }
