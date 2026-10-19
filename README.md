@@ -5,20 +5,16 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/brpaz/verbatim/ci.yml?branch=main&label=CI&logo=github&style=for-the-badge)](https://github.com/brpaz/verbatim/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE.md)
 [![Flatpak](https://img.shields.io/badge/flatpak-ready-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://flatpak.org)
-[![Vibe coded with Claude Opus 5.5](https://img.shields.io/badge/vibe%20coded%20with-Claude%20Opus%205.5-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-disclosure)
+[![Vibe coded](https://img.shields.io/badge/vibe%20coded-Claude%20Opus%205.5-D97757?style=for-the-badge&logo=claude&logoColor=white)](#verbatim)
+
+> [!WARNING]
+> **AI usage notice:** this project was fully vibe coded with Claude Opus 5.5 to scratch a personal itch. The code has had little human review. Use it at your own risk, and check transcripts against the audio before relying on them.
 
 <div align="center">
 
 ![Main window](data/resources/screenshots/screenshot1.png "Main window")
 
 </div>
-
-## AI Disclosure
-
-> [!WARNING]
-> Verbatim is vibe coded: most of its code, tests, documentation, build configuration and icons were written by Claude Opus 5.5 (Anthropic), directed and reviewed by the maintainer. Review the code before relying on it, and expect bugs.
-
-Transcripts and live captions come from speech recognition models and can be wrong, especially for names, short phrases and accented speech, so check anything important against the audio. Audio is processed on your computer and never uploaded; the only network access is the one-time model download.
 
 ## Features
 
@@ -28,7 +24,17 @@ Transcripts and live captions come from speech recognition models and can be wro
 - Captions live audio from the microphone or from whatever the computer plays
 - Saves the transcript as text, or as SRT or WebVTT subtitles
 
-The speech models (about 670 MB for Parakeet, 1 GB for Whisper) are downloaded once, on first use, after asking.
+## Requirements
+
+- **Linux** on x86_64 or aarch64.
+- **Flatpak** works on any distribution, and brings everything else with it.
+- **The .deb and .rpm packages** need GTK 4.20 and libadwaita 1.8 or newer: Ubuntu 25.10 or newer (including 26.04 LTS), Debian 14 or newer, Fedora 43 or newer, Arch or openSUSE Tumbleweed. Ubuntu 24.04, Debian 13 and Fedora 42 ship older versions; use the Flatpak there.
+  - GStreamer with its base, good and PulseAudio plugins is installed as a dependency.
+  - The GStreamer libav plugin (`gstreamer1.0-libav` on Debian and Ubuntu, `gstreamer1-plugin-libav` on Fedora) is recommended: it adds decoders for more formats, such as AAC and most video files.
+- **Live captions** need PipeWire or PulseAudio, the default on current desktops.
+- **Models** are downloaded once, after asking: about 670 MB for Parakeet, or 1 GB for Whisper.
+- **Memory:** about 2 GB free while transcribing, with either model.
+- **Speed:** on an AMD Ryzen 7 8845HS, using 8 threads, Parakeet transcribes about 12 times faster than real time and Whisper about 3 times. Live captions keep up with either.
 
 ## Install
 
