@@ -25,6 +25,20 @@ const MAX_SEGMENT_SECS: f32 = 20.0;
 /// sooner and partial recognitions stay cheap.
 const LIVE_MAX_SEGMENT_SECS: f32 = 10.0;
 
+/// Live captions wait for a longer pause before ending a line, so short
+/// replies are less often cut off from the speech around them.
+const LIVE_MIN_SILENCE_SECS: f32 = 0.5;
+
+/// Parakeet detects the language from the audio it is given, and often
+/// guesses wrong on a word or two said alone. Speech shorter than this is
+/// recognised after the end of the previous segment, whose words are then
+/// dropped.
+const SHORT_SPEECH_SECS: f32 = 6.0;
+const CONTEXT_SECS: f32 = 3.0;
+/// Silence between the context and the speech, which keeps their words
+/// apart.
+const CONTEXT_GAP_SECS: f32 = 0.2;
+
 /// Silero VAD finds speech, and Parakeet TDT transcribes each speech segment.
 pub struct ParakeetTranscriber {
     recognizer: OfflineRecognizer,
@@ -84,6 +98,7 @@ impl ParakeetTranscriber {
     pub fn with_partials(mut self, interval: Duration) -> Self {
         self.partial_every = Some((interval.as_secs_f32() * SAMPLE_RATE as f32) as usize);
         self.vad_config.silero_vad.max_speech_duration = LIVE_MAX_SEGMENT_SECS;
+        self.vad_config.silero_vad.min_silence_duration = LIVE_MIN_SILENCE_SECS;
         self
     }
 
@@ -94,23 +109,81 @@ impl ParakeetTranscriber {
         stream.get_result()
     }
 
+    /// Recognises speech spanning samples `start..end` of the stream, after
+    /// `context` when the speech is short.
+    fn recognize_in_context(
+        &self,
+        speech: &[f32],
+        context: &[f32],
+        start: u64,
+        end: u64,
+    ) -> Option<Recognition> {
+        let (start_ms, end_ms) = (to_ms(start), to_ms(end));
+        let short = (speech.len() as f32) < SHORT_SPEECH_SECS * SAMPLE_RATE as f32;
+        if short && !context.is_empty() {
+            let gap = (CONTEXT_GAP_SECS * SAMPLE_RATE as f32) as usize;
+            let mut input = Vec::with_capacity(context.len() + gap + speech.len());
+            input.extend_from_slice(context);
+            input.resize(context.len() + gap, 0.0);
+            input.extend_from_slice(speech);
+            let result = self.recognize(&input)?;
+            let all = words(&result, 0, to_ms(input.len() as u64));
+            // Without word timings the context's words cannot be told apart,
+            // so the speech is recognised alone instead.
+            if !all.is_empty() {
+                let words = words_after_context(
+                    all,
+                    to_ms(context.len() as u64),
+                    to_ms((context.len() + gap) as u64),
+                    start_ms,
+                    end_ms,
+                );
+                let text = words
+                    .iter()
+                    .map(|word| word.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                return Some(Recognition { text, words });
+            }
+        }
+        let result = self.recognize(speech)?;
+        Some(Recognition {
+            text: result.text.trim().to_owned(),
+            words: words(&result, start_ms, end_ms),
+        })
+    }
+
     /// Transcribes every speech segment the VAD has completed.
     fn drain(
         &self,
         vad: &VoiceActivityDetector,
         total_samples: Option<u64>,
         recent: &mut Recent,
+        context: &mut Vec<f32>,
         on_event: &mut dyn FnMut(Event) -> ControlFlow<()>,
     ) -> ControlFlow<()> {
         while let Some(speech) = vad.front() {
             let start = speech.start().max(0) as u64;
             let end = start + speech.samples().len() as u64;
-            let result = self.recognize(speech.samples());
+            let recognition = self.recognize_in_context(speech.samples(), context, start, end);
+            let samples = speech.samples();
+            let recognised = recognition.as_ref().is_some_and(|r| !r.text.is_empty());
+            // Only speech that was recognised as words is worth its context.
+            if recognised {
+                let keep = ((CONTEXT_SECS * SAMPLE_RATE as f32) as usize).min(samples.len());
+                context.clear();
+                context.extend_from_slice(&samples[samples.len() - keep..]);
+            }
             vad.pop();
             recent.discard_before(end);
 
-            if let Some(segment) = result.and_then(|result| segment(&result, start, end)) {
-                on_event(Event::Segment(segment))?;
+            if let Some(recognition) = recognition.filter(|r| !r.text.is_empty()) {
+                on_event(Event::Segment(Segment {
+                    start_ms: to_ms(start),
+                    end_ms: to_ms(end),
+                    text: recognition.text,
+                    words: recognition.words,
+                }))?;
             }
             if let Some(total) = total_samples.filter(|&total| total > 0) {
                 on_event(Event::Progress((end as f32 / total as f32).min(1.0)))?;
@@ -139,6 +212,7 @@ impl Transcriber for ParakeetTranscriber {
         let max_recent =
             (self.vad_config.silero_vad.max_speech_duration + 1.0) as usize * SAMPLE_RATE as usize;
         let mut recent = Recent::default();
+        let mut context = Vec::new();
         let mut since_partial = 0;
         // The VAD runs on whole windows; samples left over from one chunk
         // wait for the next.
@@ -154,7 +228,7 @@ impl Transcriber for ParakeetTranscriber {
             }
             pending.drain(..whole);
             if self
-                .drain(&vad, total_samples, &mut recent, on_event)
+                .drain(&vad, total_samples, &mut recent, &mut context, on_event)
                 .is_break()
             {
                 return Err(Error::Cancelled);
@@ -166,9 +240,10 @@ impl Transcriber for ParakeetTranscriber {
             since_partial += whole;
             if since_partial >= every && vad.detected() {
                 since_partial = 0;
+                let end = recent.start + recent.samples.len() as u64;
                 let text = self
-                    .recognize(&recent.samples)
-                    .map(|result| result.text.trim().to_owned())
+                    .recognize_in_context(&recent.samples, &context, recent.start, end)
+                    .map(|recognition| recognition.text)
                     .unwrap_or_default();
                 if !text.is_empty() && on_event(Event::Partial(text)).is_break() {
                     return Err(Error::Cancelled);
@@ -180,7 +255,7 @@ impl Transcriber for ParakeetTranscriber {
         }
         vad.flush();
         if self
-            .drain(&vad, total_samples, &mut recent, on_event)
+            .drain(&vad, total_samples, &mut recent, &mut context, on_event)
             .is_break()
             || on_event(Event::Progress(1.0)).is_break()
         {
@@ -215,20 +290,34 @@ impl Recent {
     }
 }
 
-/// Builds a segment spanning samples `start..end` from a recognition result,
-/// or `None` when nothing was said.
-fn segment(result: &OfflineRecognizerResult, start: u64, end: u64) -> Option<Segment> {
-    let text = result.text.trim();
-    if text.is_empty() {
-        return None;
-    }
-    let (start_ms, end_ms) = (to_ms(start), to_ms(end));
-    Some(Segment {
-        start_ms,
-        end_ms,
-        text: text.to_owned(),
-        words: words(result, start_ms, end_ms),
-    })
+/// Keeps the words of a recognition of context, gap and speech that start
+/// after the context ends at `context_ms`, and moves them from input time,
+/// where the speech starts at `speech_from_ms`, to stream time
+/// `start_ms..end_ms`.
+fn words_after_context(
+    words: Vec<Word>,
+    context_ms: u64,
+    speech_from_ms: u64,
+    start_ms: u64,
+    end_ms: u64,
+) -> Vec<Word> {
+    let shift = |ms: u64| (start_ms + ms.saturating_sub(speech_from_ms)).min(end_ms);
+    words
+        .into_iter()
+        .filter(|word| word.start_ms >= context_ms)
+        .map(|word| Word {
+            start_ms: shift(word.start_ms),
+            end_ms: shift(word.end_ms),
+            text: word.text,
+        })
+        .collect()
+}
+
+/// Text and word timings of one recognition, with times in milliseconds
+/// from the start of the stream.
+struct Recognition {
+    text: String,
+    words: Vec<Word>,
 }
 
 /// Groups subword tokens into words. A token starting with a space (or the
@@ -339,6 +428,28 @@ mod tests {
                     text: "no".into()
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn drops_context_words_and_moves_the_rest_to_stream_time() {
+        let word = |start_ms, end_ms, text: &str| Word {
+            start_ms,
+            end_ms,
+            text: text.into(),
+        };
+        // 3 s of context, 0.2 s gap, then speech recognised at 50 s.
+        let words = vec![
+            word(2_500, 2_900, "tecnologia."),
+            word(3_100, 3_300, "Olá,"),
+            word(3_300, 3_700, "Porto."),
+        ];
+
+        let kept = words_after_context(words, 3_000, 3_200, 50_000, 50_400);
+
+        assert_eq!(
+            kept,
+            [word(50_000, 50_100, "Olá,"), word(50_100, 50_400, "Porto.")]
         );
     }
 
