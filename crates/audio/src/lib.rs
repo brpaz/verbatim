@@ -1,6 +1,9 @@
-//! Decodes audio and video files into the mono samples the transcriber reads.
+//! Decodes audio and video files, and captures live audio, into the mono
+//! samples the transcriber reads.
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use gst::prelude::*;
 
@@ -30,44 +33,62 @@ impl From<gst::StateChangeError> for Error {
     }
 }
 
+/// GStreamer source of the default input device. PipeWire serves it through
+/// its PulseAudio layer, which is also what the Flatpak sandbox exposes.
+pub const MICROPHONE: &str = "pulsesrc";
+
+/// GStreamer source of what the default output device plays.
+pub const SYSTEM_AUDIO: &str = "pulsesrc device=@DEFAULT_MONITOR@";
+
 /// Initializes GStreamer. Must be called once before [`Decoder::open`].
 pub fn init() -> Result<(), Error> {
     Ok(gst::init()?)
 }
 
-/// Decodes the first audio stream of a file into mono samples at
-/// `sample_rate`, a chunk at a time, so a long file never has to fit in
-/// memory.
+/// Delivers mono samples at `sample_rate` from a file or a live source, a
+/// chunk at a time, so a long file never has to fit in memory.
 pub struct Decoder {
     pipeline: PipelineGuard,
     sink: gst_app::AppSink,
     sample_rate: u32,
     total_samples: Option<u64>,
     done: bool,
+    stop: Option<Arc<AtomicBool>>,
 }
 
 impl Decoder {
+    /// Decodes the first audio stream of a file.
     pub fn open(path: &Path, sample_rate: u32) -> Result<Self, Error> {
-        let pipeline = gst::parse::launch(&format!(
-            "filesrc name=src ! decodebin ! audioconvert ! audioresample \
-             ! audio/x-raw,format=F32LE,channels=1,rate={sample_rate} ! appsink name=sink sync=false"
-        ))?
-        .downcast::<gst::Pipeline>()
-        .expect("a launch line with several elements is a pipeline");
-        let pipeline = PipelineGuard(pipeline);
+        let pipeline = launch("filesrc name=src ! decodebin", sample_rate)?;
         pipeline
             .0
             .by_name("src")
             .expect("the launch line names its source")
             .set_property("location", utf8_path(path)?);
+        Self::start(pipeline, sample_rate, None)
+    }
+
+    /// Captures `source`, a GStreamer source description such as
+    /// [`MICROPHONE`]. The stream ends once `stop` is set.
+    pub fn capture(source: &str, sample_rate: u32, stop: Arc<AtomicBool>) -> Result<Self, Error> {
+        let pipeline = launch(source, sample_rate)?;
+        Self::start(pipeline, sample_rate, Some(stop))
+    }
+
+    fn start(
+        pipeline: PipelineGuard,
+        sample_rate: u32,
+        stop: Option<Arc<AtomicBool>>,
+    ) -> Result<Self, Error> {
         let sink = pipeline
             .0
             .by_name("sink")
             .and_downcast::<gst_app::AppSink>()
             .expect("the launch line names its appsink");
 
-        // The duration is known once the pipeline has prerolled. A file that
-        // cannot be decoded fails here, or on the first chunk.
+        // The duration of a file is known once the pipeline has prerolled. A
+        // file that cannot be decoded fails here, or on the first chunk. Live
+        // sources do not preroll and have no duration.
         pipeline.0.set_state(gst::State::Paused)?;
         let _ = pipeline.0.state(gst::ClockTime::from_seconds(5));
         let total_samples = pipeline
@@ -82,8 +103,26 @@ impl Decoder {
             sample_rate,
             total_samples,
             done: false,
+            stop,
         })
     }
+
+    fn stopped(&self) -> bool {
+        self.stop
+            .as_ref()
+            .is_some_and(|stop| stop.load(Ordering::Relaxed))
+    }
+}
+
+/// Builds `source ! … ! appsink` converting to mono F32 at `sample_rate`.
+fn launch(source: &str, sample_rate: u32) -> Result<PipelineGuard, Error> {
+    let pipeline = gst::parse::launch(&format!(
+        "{source} ! audioconvert ! audioresample \
+         ! audio/x-raw,format=F32LE,channels=1,rate={sample_rate} ! appsink name=sink sync=false"
+    ))?
+    .downcast::<gst::Pipeline>()
+    .expect("a launch line with several elements is a pipeline");
+    Ok(PipelineGuard(pipeline))
 }
 
 impl Iterator for Decoder {
@@ -93,7 +132,7 @@ impl Iterator for Decoder {
         let bus = self.pipeline.0.bus().expect("a pipeline always has a bus");
         // A failed pipeline never reaches EOS, so the sink is polled with a
         // timeout and the bus checked for errors in between.
-        while !self.done && !self.sink.is_eos() {
+        while !self.done && !self.sink.is_eos() && !self.stopped() {
             if let Some(msg) = bus.pop_filtered(&[gst::MessageType::Error]) {
                 self.done = true;
                 return Some(Err(stream_error(&msg)));
@@ -207,6 +246,42 @@ mod tests {
             "decoded {decoded} of {total}"
         );
         assert!(chunks.iter().flatten().any(|s| s.abs() > 0.1));
+    }
+
+    #[test]
+    fn capture_streams_until_stopped() {
+        init().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut capture =
+            Decoder::capture("audiotestsrc is-live=true wave=sine", 16_000, stop.clone()).unwrap();
+
+        assert_eq!(capture.total_samples(), None);
+        let first = capture.next().unwrap().unwrap();
+        assert!(!first.is_empty());
+        stop.store(true, Ordering::Relaxed);
+        assert!(capture.next().is_none());
+    }
+
+    #[test]
+    fn rejects_unknown_capture_source() {
+        init().unwrap();
+
+        let result = Decoder::capture("nosuchsrc", 16_000, Arc::default());
+
+        assert!(matches!(result, Err(Error::Setup(_))));
+    }
+
+    #[test]
+    #[ignore = "needs a running PipeWire or PulseAudio server"]
+    fn captures_default_devices() {
+        init().unwrap();
+        for source in [MICROPHONE, SYSTEM_AUDIO] {
+            let stop = Arc::new(AtomicBool::new(false));
+            let mut capture = Decoder::capture(source, 16_000, stop.clone()).unwrap();
+
+            assert!(capture.next().unwrap().is_ok(), "{source}");
+            stop.store(true, Ordering::Relaxed);
+        }
     }
 
     #[test]

@@ -9,6 +9,15 @@
       <default>640</default>
       <summary>Window height</summary>
     </key>
+    <key name="live-source" type="s">
+      <choices>
+        <choice value="microphone"/>
+        <choice value="system"/>
+      </choices>
+      <default>"microphone"</default>
+      <summary>Live captions source</summary>
+      <description>What live captions listen to: the microphone or the system audio</description>
+    </key>
     <key name="is-maximized" type="b">
       <default>false</default>
       <summary>Window maximized state</summary>

@@ -7,6 +7,22 @@ menu primary_menu {
       label: _("_Open File…");
       action: "win.open";
     }
+
+    submenu {
+      label: _("_Live Captions");
+
+      item {
+        label: _("From _Microphone");
+        action: "win.live-captions";
+        target: "microphone";
+      }
+
+      item {
+        label: _("From _System Audio");
+        action: "win.live-captions";
+        target: "system";
+      }
+    }
   }
 
   section {
@@ -18,6 +34,22 @@ menu primary_menu {
     item {
       label: _("_About Verbatim");
       action: "app.about";
+    }
+  }
+}
+
+menu live_menu {
+  section {
+    item {
+      label: _("From _Microphone");
+      action: "win.live-captions";
+      target: "microphone";
+    }
+
+    item {
+      label: _("From _System Audio");
+      action: "win.live-captions";
+      target: "system";
     }
   }
 }
@@ -112,18 +144,33 @@ template $VerbatimApplicationWindow: Adw.ApplicationWindow {
           child: Adw.StatusPage {
             icon-name: "dev.brunopaz.Verbatim-symbolic";
             title: _("Transcribe Audio");
-            description: _("Open or drop an audio or video file. Speech is recognised on this computer.");
+            description: _("Open or drop an audio or video file, or caption what is being said right now. Speech is recognised on this computer.");
 
-            child: Button {
-              label: _("_Open File…");
-              use-underline: true;
+            child: Box {
+              orientation: vertical;
+              spacing: 12;
               halign: center;
-              action-name: "win.open";
 
-              styles [
-                "pill",
-                "suggested-action",
-              ]
+              Button {
+                label: _("_Open File…");
+                use-underline: true;
+                action-name: "win.open";
+
+                styles [
+                  "pill",
+                  "suggested-action",
+                ]
+              }
+
+              Adw.SplitButton live_button {
+                label: _("_Live Captions");
+                use-underline: true;
+                tooltip-text: _("Caption the source used last time");
+                dropdown-tooltip: _("Choose What to Caption");
+                menu-model: live_menu;
+                action-name: "win.live-captions";
+                action-target: "''";
+              }
             };
           };
         }
@@ -134,14 +181,14 @@ template $VerbatimApplicationWindow: Adw.ApplicationWindow {
           child: Adw.StatusPage {
             icon-name: "microphone-disabled-symbolic";
             title: _("No Speech Found");
-            description: _("The file has no speech that could be recognised.");
+            description: _("No speech could be recognised.");
           };
         }
 
         StackPage {
           name: "transcript";
 
-          child: ScrolledWindow {
+          child: ScrolledWindow scroller {
             hscrollbar-policy: never;
             vexpand: true;
 

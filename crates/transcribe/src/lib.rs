@@ -2,6 +2,7 @@
 //! (ADR 0003).
 
 use std::ops::ControlFlow;
+use std::time::Duration;
 
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineRecognizerResult,
@@ -20,10 +21,16 @@ const VAD_WINDOW: usize = 512;
 /// the memory of a single recognition.
 const MAX_SEGMENT_SECS: f32 = 20.0;
 
+/// Live captions split sooner, so a long run of speech becomes final text
+/// sooner and partial recognitions stay cheap.
+const LIVE_MAX_SEGMENT_SECS: f32 = 10.0;
+
 /// Silero VAD finds speech, and Parakeet TDT transcribes each speech segment.
 pub struct ParakeetTranscriber {
     recognizer: OfflineRecognizer,
     vad_config: VadModelConfig,
+    /// Samples between partial recognitions, when live results are wanted.
+    partial_every: Option<usize>,
 }
 
 impl ParakeetTranscriber {
@@ -68,7 +75,23 @@ impl ParakeetTranscriber {
         Ok(Self {
             recognizer,
             vad_config,
+            partial_every: None,
         })
+    }
+
+    /// Sends [`Event::Partial`] with the speech in progress every `interval`
+    /// of audio, for live captions (ADR 0007).
+    pub fn with_partials(mut self, interval: Duration) -> Self {
+        self.partial_every = Some((interval.as_secs_f32() * SAMPLE_RATE as f32) as usize);
+        self.vad_config.silero_vad.max_speech_duration = LIVE_MAX_SEGMENT_SECS;
+        self
+    }
+
+    fn recognize(&self, samples: &[f32]) -> Option<OfflineRecognizerResult> {
+        let stream = self.recognizer.create_stream();
+        stream.accept_waveform(SAMPLE_RATE as i32, samples);
+        self.recognizer.decode(&stream);
+        stream.get_result()
     }
 
     /// Transcribes every speech segment the VAD has completed.
@@ -76,17 +99,15 @@ impl ParakeetTranscriber {
         &self,
         vad: &VoiceActivityDetector,
         total_samples: Option<u64>,
+        recent: &mut Recent,
         on_event: &mut dyn FnMut(Event) -> ControlFlow<()>,
     ) -> ControlFlow<()> {
         while let Some(speech) = vad.front() {
             let start = speech.start().max(0) as u64;
             let end = start + speech.samples().len() as u64;
-
-            let stream = self.recognizer.create_stream();
-            stream.accept_waveform(SAMPLE_RATE as i32, speech.samples());
-            self.recognizer.decode(&stream);
-            let result = stream.get_result();
+            let result = self.recognize(speech.samples());
             vad.pop();
+            recent.discard_before(end);
 
             if let Some(segment) = result.and_then(|result| segment(&result, start, end)) {
                 on_event(Event::Segment(segment))?;
@@ -115,6 +136,10 @@ impl Transcriber for ParakeetTranscriber {
             .ok_or_else(|| backend_error("could not load the Silero VAD model"))?;
 
         let total_samples = audio.total_samples();
+        let max_recent =
+            (self.vad_config.silero_vad.max_speech_duration + 1.0) as usize * SAMPLE_RATE as usize;
+        let mut recent = Recent::default();
+        let mut since_partial = 0;
         // The VAD runs on whole windows; samples left over from one chunk
         // wait for the next.
         let mut pending: Vec<f32> = Vec::new();
@@ -124,21 +149,69 @@ impl Transcriber for ParakeetTranscriber {
             for window in pending[..whole].chunks(VAD_WINDOW) {
                 vad.accept_waveform(window);
             }
+            if self.partial_every.is_some() {
+                recent.push(&pending[..whole], max_recent);
+            }
             pending.drain(..whole);
-            if self.drain(&vad, total_samples, on_event).is_break() {
+            if self
+                .drain(&vad, total_samples, &mut recent, on_event)
+                .is_break()
+            {
                 return Err(Error::Cancelled);
+            }
+
+            let Some(every) = self.partial_every else {
+                continue;
+            };
+            since_partial += whole;
+            if since_partial >= every && vad.detected() {
+                since_partial = 0;
+                let text = self
+                    .recognize(&recent.samples)
+                    .map(|result| result.text.trim().to_owned())
+                    .unwrap_or_default();
+                if !text.is_empty() && on_event(Event::Partial(text)).is_break() {
+                    return Err(Error::Cancelled);
+                }
             }
         }
         if !pending.is_empty() {
             vad.accept_waveform(&pending);
         }
         vad.flush();
-        if self.drain(&vad, total_samples, on_event).is_break()
+        if self
+            .drain(&vad, total_samples, &mut recent, on_event)
+            .is_break()
             || on_event(Event::Progress(1.0)).is_break()
         {
             return Err(Error::Cancelled);
         }
         Ok(())
+    }
+}
+
+/// The audio since the end of the last finished segment, which holds the
+/// speech in progress for partial recognitions.
+#[derive(Debug, Default)]
+struct Recent {
+    /// Position of `samples[0]` in the whole stream.
+    start: u64,
+    samples: Vec<f32>,
+}
+
+impl Recent {
+    /// Appends `samples`, keeping at most the last `max` samples.
+    fn push(&mut self, samples: &[f32], max: usize) {
+        self.samples.extend_from_slice(samples);
+        let excess = self.samples.len().saturating_sub(max);
+        self.samples.drain(..excess);
+        self.start += excess as u64;
+    }
+
+    fn discard_before(&mut self, position: u64) {
+        let n = (position.saturating_sub(self.start) as usize).min(self.samples.len());
+        self.samples.drain(..n);
+        self.start += n as u64;
     }
 }
 
@@ -295,6 +368,7 @@ mod tests {
                 match event {
                     Event::Segment(segment) => segments.push(segment),
                     Event::Progress(p) => last_progress = p,
+                    Event::Partial(_) => {}
                 }
                 ControlFlow::Continue(())
             })
@@ -329,6 +403,71 @@ mod tests {
         let result = transcriber.transcribe(&mut decoder, &mut |_| ControlFlow::Break(()));
 
         assert!(matches!(result, Err(Error::Cancelled)));
+    }
+
+    #[test]
+    fn recent_keeps_only_the_latest_samples() {
+        let mut recent = Recent::default();
+
+        recent.push(&[1.0, 2.0, 3.0], 4);
+        recent.push(&[4.0, 5.0], 4);
+
+        assert_eq!(recent.samples, [2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(recent.start, 1);
+    }
+
+    #[test]
+    fn recent_discards_audio_of_finished_segments() {
+        let mut recent = Recent::default();
+        recent.push(&[1.0, 2.0, 3.0, 4.0, 5.0], 10);
+
+        recent.discard_before(3);
+        recent.discard_before(1);
+
+        assert_eq!(recent.samples, [4.0, 5.0]);
+        assert_eq!(recent.start, 3);
+        recent.discard_before(99);
+        assert!(recent.samples.is_empty());
+        assert_eq!(recent.start, 5);
+    }
+
+    #[test]
+    #[ignore = "needs installed models in VERBATIM_MODELS_DIR"]
+    fn sends_partials_before_each_segment() {
+        let dir = std::env::var("VERBATIM_MODELS_DIR").expect("VERBATIM_MODELS_DIR is set");
+        let audio = std::env::var("VERBATIM_TEST_AUDIO").expect("VERBATIM_TEST_AUDIO is set");
+        verbatim_audio::init().unwrap();
+        let mut decoder =
+            verbatim_audio::Decoder::open(std::path::Path::new(&audio), SAMPLE_RATE).unwrap();
+        let transcriber = ParakeetTranscriber::load(&ModelStore::new(&dir), 2)
+            .unwrap()
+            .with_partials(Duration::from_millis(500));
+        let mut events = Vec::new();
+
+        transcriber
+            .transcribe(&mut decoder, &mut |event| {
+                if !matches!(event, Event::Progress(_)) {
+                    events.push(event);
+                }
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+
+        let partials = events
+            .iter()
+            .filter(|e| matches!(e, Event::Partial(_)))
+            .count();
+        let segments = events
+            .iter()
+            .filter(|e| matches!(e, Event::Segment(_)))
+            .count();
+        assert!(segments > 0);
+        assert!(
+            partials >= segments,
+            "{partials} partials, {segments} segments"
+        );
+        assert!(matches!(events.first(), Some(Event::Partial(_))));
+        eprintln!("{events:#?}");
     }
 
     #[test]

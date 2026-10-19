@@ -66,6 +66,10 @@ pub enum Event {
     /// Fraction of the stream processed, in `[0.0, 1.0]`, when its length is
     /// known.
     Progress(f32),
+    /// Text recognised so far in the segment still being spoken, replaced by
+    /// the next `Partial` or by the finished `Segment`. Only transcribers
+    /// asked for live results send it.
+    Partial(String),
     /// A finished segment. Segments arrive in time order.
     Segment(Segment),
 }

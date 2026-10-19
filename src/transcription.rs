@@ -1,22 +1,68 @@
-//! Runs a transcription on a background thread inside the app process
-//! (ADR 0005), reporting to the main loop through a channel.
+//! Runs a transcription of a file or of live audio on a background thread
+//! inside the app process (ADR 0005), reporting to the main loop through a
+//! channel.
 
 use std::ops::ControlFlow;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::time::Duration;
 
 use gtk::glib;
 use verbatim_core::{Error, Event, Segment, Transcriber};
 use verbatim_models::{Model, ModelStore, TRANSCRIBE_MODELS};
 use verbatim_transcribe::{ParakeetTranscriber, SAMPLE_RATE};
 
+/// How often live captions show the speech in progress.
+const PARTIAL_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Debug, Clone)]
+pub enum Input {
+    File(PathBuf),
+    Live(LiveSource),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveSource {
+    Microphone,
+    SystemAudio,
+}
+
+impl LiveSource {
+    /// Name stored in the `live-source` setting and used as action target.
+    pub fn id(self) -> &'static str {
+        match self {
+            LiveSource::Microphone => "microphone",
+            LiveSource::SystemAudio => "system",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "microphone" => Some(LiveSource::Microphone),
+            "system" => Some(LiveSource::SystemAudio),
+            _ => None,
+        }
+    }
+
+    fn gst_source(self) -> &'static str {
+        match self {
+            LiveSource::Microphone => verbatim_audio::MICROPHONE,
+            LiveSource::SystemAudio => verbatim_audio::SYSTEM_AUDIO,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Update {
     /// Fraction of the model download done.
     Downloading(f32),
     Transcribing(f32),
+    /// Live capture has started.
+    Listening,
+    /// Speech in progress, replaced by the next `Partial` or `Segment`.
+    Partial(String),
     Segment(Segment),
     Finished,
     Cancelled,
@@ -32,34 +78,43 @@ pub fn missing_models(store: &ModelStore) -> Vec<&'static Model> {
 }
 
 /// A running transcription. Dropping it does not stop the thread; call
-/// [`Job::cancel`].
+/// [`Job::cancel`] or [`Job::stop`].
 #[derive(Debug)]
 pub struct Job {
     cancelled: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl Job {
-    /// Transcribes `path`, downloading missing models first. Updates end
+    /// Transcribes `input`, downloading missing models first. Updates end
     /// with exactly one of `Finished`, `Cancelled` or `Failed`.
-    pub fn start(path: PathBuf, sender: async_channel::Sender<Update>) -> Self {
+    pub fn start(input: Input, sender: async_channel::Sender<Update>) -> Self {
         let cancelled = Arc::new(AtomicBool::new(false));
-        let flag = cancelled.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let flags = (cancelled.clone(), stopped.clone());
         thread::spawn(move || {
-            let last = match run(&path, &flag, &sender) {
+            let last = match run(&input, &flags.0, flags.1, &sender) {
                 Ok(()) => Update::Finished,
                 Err(Failure::Cancelled) => Update::Cancelled,
                 Err(Failure::Other(message)) => {
-                    tracing::warn!(path = %path.display(), error = %message, "transcription failed");
+                    tracing::warn!(?input, error = %message, "transcription failed");
                     Update::Failed(message)
                 }
             };
             let _ = sender.send_blocking(last);
         });
-        Self { cancelled }
+        Self { cancelled, stopped }
     }
 
+    /// Stops at once, dropping speech not yet transcribed.
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
+    }
+
+    /// Ends live capture. Speech already captured is still transcribed
+    /// before the job finishes.
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::Relaxed);
     }
 }
 
@@ -78,8 +133,9 @@ impl From<Error> for Failure {
 }
 
 fn run(
-    path: &Path,
+    input: &Input,
     cancelled: &AtomicBool,
+    stopped: Arc<AtomicBool>,
     sender: &async_channel::Sender<Update>,
 ) -> Result<(), Failure> {
     // A closed channel means the window is gone, which also cancels.
@@ -103,14 +159,30 @@ fn run(
 
     let _ = send(Update::Transcribing(0.0));
     let threads = thread::available_parallelism().map_or(1, |n| (n.get() / 2).max(1));
-    let transcriber = ParakeetTranscriber::load(&store, threads as i32)?;
-    verbatim_audio::init().map_err(|err| Failure::Other(err.to_string()))?;
-    let mut audio = verbatim_audio::Decoder::open(path, SAMPLE_RATE)
-        .map_err(|err| Failure::Other(err.to_string()))?;
+    let mut transcriber = ParakeetTranscriber::load(&store, threads as i32)?;
+    verbatim_audio::init().map_err(audio_failure)?;
+    let mut audio = match input {
+        Input::File(path) => {
+            verbatim_audio::Decoder::open(path, SAMPLE_RATE).map_err(audio_failure)?
+        }
+        Input::Live(source) => {
+            transcriber = transcriber.with_partials(PARTIAL_INTERVAL);
+            let capture =
+                verbatim_audio::Decoder::capture(source.gst_source(), SAMPLE_RATE, stopped)
+                    .map_err(audio_failure)?;
+            let _ = send(Update::Listening);
+            capture
+        }
+    };
 
     transcriber.transcribe(&mut audio, &mut |event| match event {
         Event::Progress(fraction) => send(Update::Transcribing(fraction)),
+        Event::Partial(text) => send(Update::Partial(text)),
         Event::Segment(segment) => send(Update::Segment(segment)),
     })?;
     Ok(())
+}
+
+fn audio_failure(err: verbatim_audio::Error) -> Failure {
+    Failure::Other(err.to_string())
 }

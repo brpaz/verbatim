@@ -8,7 +8,7 @@ use verbatim_core::{Format, Segment, clock_time, render};
 
 use crate::application::VerbatimApplication;
 use crate::config::{APP_ID, PROFILE};
-use crate::transcription::{self, Job, Update};
+use crate::transcription::{self, Input, Job, LiveSource, Update};
 
 mod imp {
     use super::*;
@@ -31,6 +31,8 @@ mod imp {
         #[template_child]
         pub stack: TemplateChild<gtk::Stack>,
         #[template_child]
+        pub scroller: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
         pub segment_list: TemplateChild<gtk::ListBox>,
         #[template_child]
         pub media_bar: TemplateChild<gtk::ActionBar>,
@@ -38,6 +40,12 @@ mod imp {
         pub media_controls: TemplateChild<gtk::MediaControls>,
         pub settings: gio::Settings,
         pub file: RefCell<Option<gio::File>>,
+        /// File name, without extension, offered when saving the transcript.
+        pub export_name: RefCell<String>,
+        /// Source being captioned, while a live job runs.
+        pub live: Cell<Option<LiveSource>>,
+        /// Last row of the list while live speech is in progress.
+        pub partial_row: RefCell<Option<(gtk::ListBoxRow, gtk::Label)>>,
         pub media: RefCell<Option<gtk::MediaFile>>,
         pub segments: RefCell<Vec<Segment>>,
         pub job: RefCell<Option<Job>>,
@@ -57,11 +65,15 @@ mod imp {
                 progress_banner: TemplateChild::default(),
                 progress_bar: TemplateChild::default(),
                 stack: TemplateChild::default(),
+                scroller: TemplateChild::default(),
                 segment_list: TemplateChild::default(),
                 media_bar: TemplateChild::default(),
                 media_controls: TemplateChild::default(),
                 settings: gio::Settings::new(*APP_ID),
                 file: RefCell::default(),
+                export_name: RefCell::default(),
+                live: Cell::default(),
+                partial_row: RefCell::default(),
                 media: RefCell::default(),
                 segments: RefCell::default(),
                 job: RefCell::default(),
@@ -171,12 +183,36 @@ impl VerbatimApplicationWindow {
                 }
             })
             .build();
+        let action_stop = gio::ActionEntry::builder("stop")
+            .activate(|window: &Self, _, _| {
+                if let Some(job) = window.imp().job.borrow().as_ref() {
+                    job.stop();
+                }
+            })
+            .build();
+        let action_live = gio::ActionEntry::builder("live-captions")
+            .parameter_type(Some(glib::VariantTy::STRING))
+            .activate(|window: &Self, _, param| {
+                let settings = &window.imp().settings;
+                let source = param
+                    .and_then(|p| p.str())
+                    .and_then(LiveSource::from_id)
+                    .or_else(|| LiveSource::from_id(&settings.string("live-source")))
+                    .unwrap_or(LiveSource::Microphone);
+                if let Err(err) = settings.set_string("live-source", source.id()) {
+                    tracing::warn!(error = %err, "could not save the live source");
+                }
+                window.start_live(source);
+            })
+            .build();
         self.add_action_entries([
             action_shortcuts,
             action_open,
             action_export,
             action_copy,
             action_cancel,
+            action_stop,
+            action_live,
         ]);
     }
 
@@ -253,27 +289,61 @@ impl VerbatimApplicationWindow {
             self.toast(&gettext("Only files on this computer can be transcribed"));
             return;
         };
-        if let Some(job) = imp.job.take() {
-            job.cancel();
-        }
-
         let name = file
             .basename()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        imp.window_title.set_subtitle(&name);
+        let stem = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_else(|| gettext("Transcript"));
+        self.reset_transcript(&name, stem);
+        self.set_media(&file);
+        imp.file.replace(Some(file));
+        self.transcribe(Input::File(path));
+    }
+
+    /// Captions `source` live, replacing any previous transcript.
+    fn start_live(&self, source: LiveSource) {
+        let imp = self.imp();
+        if let Some(media) = imp.media.take() {
+            media.pause();
+        }
+        imp.media_controls.set_media_stream(gtk::MediaStream::NONE);
+        imp.media_bar.set_revealed(false);
+        imp.file.take();
+        let started = glib::DateTime::now_local()
+            .and_then(|now| now.format("%Y-%m-%d %H-%M"))
+            .map(String::from)
+            .unwrap_or_default();
+        let stem = gettext("Live Captions {date}").replace("{date}", &started);
+        self.reset_transcript(&source_title(source), stem);
+        imp.live.set(Some(source));
+        self.transcribe(Input::Live(source));
+    }
+
+    /// Clears the transcript before a new job, stopping the current one.
+    fn reset_transcript(&self, subtitle: &str, export_name: String) {
+        let imp = self.imp();
+        if let Some(job) = imp.job.take() {
+            job.cancel();
+        }
+        imp.live.set(None);
+        imp.partial_row.take();
+        imp.window_title.set_subtitle(subtitle);
+        imp.export_name.replace(export_name);
         imp.segments.borrow_mut().clear();
         imp.segment_list.remove_all();
         self.set_transcript_actions_enabled(false);
-        self.set_media(&file);
-        imp.file.replace(Some(file));
         imp.stack.set_visible_child_name("transcript");
+    }
 
+    fn transcribe(&self, input: Input) {
         let missing = transcription::missing_models(&transcription::model_store());
-        if missing.is_empty() || imp.models_approved.get() {
-            self.start_job(path);
+        if missing.is_empty() || self.imp().models_approved.get() {
+            self.start_job(input);
         } else {
-            self.ask_model_download(path, &missing);
+            self.ask_model_download(input, &missing);
         }
     }
 
@@ -311,7 +381,7 @@ impl VerbatimApplicationWindow {
         }
     }
 
-    fn ask_model_download(&self, path: std::path::PathBuf, missing: &[&verbatim_models::Model]) {
+    fn ask_model_download(&self, input: Input, missing: &[&verbatim_models::Model]) {
         let size = missing.iter().map(|model| model.size()).sum();
         let models = missing
             .iter()
@@ -341,7 +411,7 @@ impl VerbatimApplicationWindow {
                 move |_, response| {
                     if response == "download" {
                         window.imp().models_approved.set(true);
-                        window.start_job(path.clone());
+                        window.start_job(input.clone());
                     } else {
                         window.close_file();
                     }
@@ -351,14 +421,15 @@ impl VerbatimApplicationWindow {
         dialog.present(Some(self));
     }
 
-    fn start_job(&self, path: std::path::PathBuf) {
+    fn start_job(&self, input: Input) {
         let imp = self.imp();
         let id = imp.job_id.get() + 1;
         imp.job_id.set(id);
 
         let (sender, receiver) = async_channel::bounded(64);
-        imp.job.replace(Some(Job::start(path, sender)));
-        self.show_progress(&gettext("Transcribing…"), 0.0);
+        imp.job.replace(Some(Job::start(input, sender)));
+        imp.progress_banner.set_title(&gettext("Preparing…"));
+        imp.progress_banner.set_revealed(true);
         self.action_set_enabled("win.cancel", true);
 
         glib::spawn_future_local(glib::clone!(
@@ -381,12 +452,25 @@ impl VerbatimApplicationWindow {
             Update::Downloading(fraction) => {
                 self.show_progress(&gettext("Downloading AI models…"), fraction)
             }
+            // Live captions have no length to show progress against.
+            Update::Transcribing(_) if imp.live.get().is_some() => {}
             Update::Transcribing(fraction) => {
                 self.show_progress(&gettext("Transcribing…"), fraction)
             }
+            Update::Listening => {
+                if let Some(source) = imp.live.get() {
+                    self.show_listening(source);
+                }
+            }
+            Update::Partial(text) => self.show_partial(&text),
             Update::Segment(segment) => {
-                imp.segment_list.append(&segment_row(&segment));
-                imp.segments.borrow_mut().push(segment);
+                self.keep_scrolled_to_end(|| {
+                    if let Some((row, _)) = imp.partial_row.take() {
+                        imp.segment_list.remove(&row);
+                    }
+                    imp.segment_list.append(&segment_row(&segment));
+                    imp.segments.borrow_mut().push(segment);
+                });
             }
             Update::Finished => {
                 self.finish_job();
@@ -410,6 +494,13 @@ impl VerbatimApplicationWindow {
     fn finish_job(&self) {
         let imp = self.imp();
         imp.job.take();
+        imp.live.set(None);
+        if let Some((row, _)) = imp.partial_row.take() {
+            imp.segment_list.remove(&row);
+        }
+        imp.progress_banner
+            .set_button_label(Some(&gettext("_Cancel")));
+        imp.progress_banner.set_action_name(Some("win.cancel"));
         imp.progress_banner.set_revealed(false);
         imp.progress_bar.set_visible(false);
         self.action_set_enabled("win.cancel", false);
@@ -433,6 +524,49 @@ impl VerbatimApplicationWindow {
         imp.stack.set_visible_child_name("empty");
     }
 
+    fn show_listening(&self, source: LiveSource) {
+        let imp = self.imp();
+        let title = match source {
+            LiveSource::Microphone => gettext("Listening to the microphone"),
+            LiveSource::SystemAudio => gettext("Listening to system audio"),
+        };
+        imp.progress_banner.set_title(&title);
+        imp.progress_banner
+            .set_button_label(Some(&gettext("_Stop")));
+        imp.progress_banner.set_action_name(Some("win.stop"));
+        imp.progress_banner.set_revealed(true);
+        imp.progress_bar.set_visible(false);
+    }
+
+    /// Shows the speech in progress as the last, dimmed row.
+    fn show_partial(&self, text: &str) {
+        let imp = self.imp();
+        if let Some((_, label)) = imp.partial_row.borrow().as_ref() {
+            label.set_label(text);
+            return;
+        }
+        self.keep_scrolled_to_end(|| {
+            let (row, label) = partial_row(text);
+            imp.segment_list.append(&row);
+            imp.partial_row.replace(Some((row, label)));
+        });
+    }
+
+    /// Runs `change`, then scrolls to the end if the list was scrolled to
+    /// the end before, so new captions stay in view without fighting a user
+    /// who scrolled back.
+    fn keep_scrolled_to_end(&self, change: impl FnOnce()) {
+        let adjustment = self.imp().scroller.vadjustment();
+        let at_end = adjustment.value() + adjustment.page_size() >= adjustment.upper() - 1.0;
+        change();
+        if at_end {
+            // The new row's height is known only after the next layout.
+            glib::idle_add_local_once(move || {
+                adjustment.set_value(adjustment.upper() - adjustment.page_size());
+            });
+        }
+    }
+
     fn show_progress(&self, label: &str, fraction: f32) {
         let imp = self.imp();
         imp.progress_banner
@@ -450,16 +584,7 @@ impl VerbatimApplicationWindow {
 
     fn export(&self, format: Format) {
         let imp = self.imp();
-        let stem = imp
-            .file
-            .borrow()
-            .as_ref()
-            .and_then(|file| file.path())
-            .and_then(|path| {
-                path.file_stem()
-                    .map(|stem| stem.to_string_lossy().into_owned())
-            })
-            .unwrap_or_else(|| gettext("Transcript"));
+        let stem = imp.export_name.borrow().clone();
         let contents = render(&imp.segments.borrow(), format);
         let dialog = gtk::FileDialog::builder()
             .title(gettext("Save Transcript"))
@@ -545,17 +670,45 @@ impl VerbatimApplicationWindow {
     }
 }
 
+fn source_title(source: LiveSource) -> String {
+    match source {
+        LiveSource::Microphone => gettext("Microphone"),
+        LiveSource::SystemAudio => gettext("System Audio"),
+    }
+}
+
+/// The speech in progress, not yet a transcript line.
+fn partial_row(text: &str) -> (gtk::ListBoxRow, gtk::Label) {
+    let (content, label) = row_content("", text);
+    label.add_css_class("dim-label");
+    let row = gtk::ListBoxRow::builder()
+        .child(&content)
+        .activatable(false)
+        .selectable(false)
+        .build();
+    (row, label)
+}
+
 /// A transcript line: its start time, then its text.
 fn segment_row(segment: &Segment) -> gtk::ListBoxRow {
+    let (content, _) = row_content(&clock_time(segment.start_ms), &segment.text);
+    gtk::ListBoxRow::builder()
+        .child(&content)
+        .tooltip_text(gettext("Play from here"))
+        .build()
+}
+
+/// A time column and a text column; returns the box and the text label.
+fn row_content(time: &str, text: &str) -> (gtk::Box, gtk::Label) {
     let time = gtk::Label::builder()
-        .label(clock_time(segment.start_ms))
+        .label(time)
         .valign(gtk::Align::Start)
         .xalign(1.0)
         .width_chars(7)
         .css_classes(["dim-label", "numeric"])
         .build();
     let text = gtk::Label::builder()
-        .label(&segment.text)
+        .label(text)
         .wrap(true)
         .wrap_mode(gtk::pango::WrapMode::WordChar)
         .xalign(0.0)
@@ -570,8 +723,5 @@ fn segment_row(segment: &Segment) -> gtk::ListBoxRow {
         .build();
     content.append(&time);
     content.append(&text);
-    gtk::ListBoxRow::builder()
-        .child(&content)
-        .tooltip_text(gettext("Play from here"))
-        .build()
+    (content, text)
 }
