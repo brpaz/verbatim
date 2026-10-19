@@ -1,0 +1,36 @@
+name: verbatim
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: Bruno Paz
+vendor: Bruno Paz
+homepage: https://github.com/brpaz/verbatim
+license: MIT
+description: |
+  Transcribe audio files and caption live audio with local speech-to-text models
+
+# Built from a `DESTDIR=... meson install` staging root (see .github/workflows/ci.yml)
+# — `type: tree` copies the whole installed layout (binary, desktop file, appdata,
+# icons, gschema, D-Bus service, po/mo catalogs) without enumerating every file.
+contents:
+  - src: ./_install/usr/bin
+    dst: /usr/bin
+    type: tree
+
+  - src: ./_install/usr/share
+    dst: /usr/share
+    type: tree
+
+overrides:
+  deb:
+    depends:
+      - libgtk-4-1
+      - libadwaita-1-0 (>= 1.8)
+      - libglib2.0-0
+  rpm:
+    depends:
+      - gtk4
+      - libadwaita >= 1.8
+      - glib2

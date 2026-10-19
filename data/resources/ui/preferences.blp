@@ -1,0 +1,15 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.PreferencesDialog preferences_dialog {
+  Adw.PreferencesPage {
+    Adw.PreferencesGroup {
+      title: _("General");
+
+      Adw.ActionRow {
+        title: _("Nothing to configure yet");
+        subtitle: _("Add preference rows here and bind them to GSettings keys");
+      }
+    }
+  }
+}

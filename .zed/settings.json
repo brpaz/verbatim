@@ -1,0 +1,27 @@
+{
+    "lsp": {
+        "rust-analyzer": {
+            "initialization_options": {
+                "files": {
+                    "exclude": [
+                        ".flatpak",
+                        ".flatpak-builder",
+                        "_build",
+                        "build",
+                        "builddir",
+                        "**/target/**",
+                    ],
+                    "watcherExclude": [
+                        "**/.git/objects/**",
+                        "**/.git/subtree-cache/**",
+                        "**/.flatpak/**",
+                        "**/.flatpak-builder/**",
+                        "**/_build/**",
+                        "**/target/**",
+                    ],
+                },
+                "showUnlinkedFileNotification": false,
+            },
+        },
+    },
+}

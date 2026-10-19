@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@app-id@</id>
+  <metadata_license>CC0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Verbatim</name>
+  <summary>Transcribe audio files and caption live audio with local speech-to-text models</summary>
+  <description>
+    <p>Transcribe audio files and caption live audio with local speech-to-text models</p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <!-- FIXME Replace this placeholder screenshot URL with a project screenshot. -->
+      <image>https://example.com/screenshot.png</image>
+      <caption>Main window</caption>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/brpaz/verbatim</url>
+  <url type="bugtracker">https://github.com/brpaz/verbatim/issues</url>
+  <url type="vcs-browser">https://github.com/brpaz/verbatim</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2019-07-11" />
+  </releases>
+  <developer>
+    <id>bruno_paz</id>
+    <name translate="no">Bruno Paz</name>
+  </developer>
+  <!--
+    Branding colors:
+    https://docs.flathub.org/docs/for-app-authors/metainfo-guidelines/#brand-color
+  -->
+  <branding>
+    <color type="primary" scheme_preference="light">#ff00ff</color>
+    <color type="primary" scheme_preference="dark">#993d3d</color>
+  </branding>
+  <update_contact>noreply@example.com</update_contact>
+  <translation type="gettext">@gettext-package@</translation>
+  <launchable type="desktop-id">@app-id@.desktop</launchable>
+</component>

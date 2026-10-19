@@ -1,0 +1,22 @@
+name: Update draft release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: brpaz/draftsman@v0.3.0
+        with:
+          command: draft
+          backend: github
+          token: ${{ secrets.GITHUB_TOKEN }}

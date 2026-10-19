@@ -1,0 +1,41 @@
+#
+#  Refer for explanation to following link:
+#  https://github.com/evilmartians/lefthook/blob/master/docs/# configuration.md
+#
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "src/*.rs"
+      run: cargo fmt --all
+      stage_fixed: true
+    lint:
+      glob: "src/*.rs"
+      run: cargo clippy --allow-dirty --fix --all-targets --all-features -- -D warnings
+      stage_fixed: true
+    test:
+      run: cargo test --all
+    blueprint-format:
+      glob: "*.blp"
+      run: blueprint-compiler format --fix {staged_files}
+      stage_fixed: true
+    secrets:
+      run: gitleaks git --staged --redact --no-banner
+pre-push:
+  commands:
+    commitlint:
+      # Lints the commits being pushed: those after the remote branch, or for
+      # a branch the remote doesn't have yet, after the point it left the
+      # remote's default branch (every commit when the remote is empty).
+      # Each message is linted on its own; merge commits are skipped.
+      run: |
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        base=$(git rev-parse -q --verify "origin/$branch" \
+          || git merge-base HEAD origin/HEAD 2>/dev/null \
+          || git merge-base HEAD origin/main 2>/dev/null)
+        msg=$(mktemp)
+        trap 'rm -f "$msg"' EXIT
+        for commit in $(git rev-list --no-merges "${base:+$base..}HEAD"); do
+          git log -1 --format=%B "$commit" > "$msg"
+          commitlint --edit "$msg" || { echo "in commit $(git log -1 --format='%h %s' "$commit")"; exit 1; }
+        done

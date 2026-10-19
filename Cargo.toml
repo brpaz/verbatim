@@ -1,0 +1,15 @@
+[package]
+name = "verbatim"
+authors = ["Bruno Paz <oss@brunopaz.dev>"]
+edition = "2024"
+license = "MIT"
+
+[profile.release]
+lto = true
+
+[dependencies]
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
+gtk = { version = "0.11", package = "gtk4", features = ["v4_20"] }
+adw = { version = "0.9", package = "libadwaita", features = ["v1_8"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"

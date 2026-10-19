@@ -1,0 +1,31 @@
+/target/
+/build/
+/_build/
+/_install/
+/builddir/
+*.deb
+*.rpm
+/build-aux/app
+.flatpak-builder
+*.ui.in~
+*.ui~
+/.flatpak/
+/vendor
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# Local environment, created from .env.example by devenv
+/.env
+
+repo
+flatpak-build
+flatpak-build-prod
+flatpak
+*.flatpak
+__pycache__

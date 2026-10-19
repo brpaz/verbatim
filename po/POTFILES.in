@@ -1,0 +1,7 @@
+data/dev.brunopaz.Verbatim.desktop.in.in
+data/dev.brunopaz.Verbatim.gschema.xml.in
+data/dev.brunopaz.Verbatim.metainfo.xml.in.in
+data/resources/ui/preferences.blp
+data/resources/ui/shortcuts.blp
+data/resources/ui/window.blp
+src/application.rs

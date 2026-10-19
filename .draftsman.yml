@@ -1,0 +1,15 @@
+
+
+# The built-in template minus its `# <version>` title: the changelog workflow
+# adds its own `## v<version> - <date>` heading for each release.
+template: |
+  {{range .Packages}}{{if .Name}}# {{.Name}}{{if .SuggestedVersion}} ({{.SuggestedVersion}}){{end}}
+  {{end}}{{range .Sections}}## {{.Name}}
+  {{range .Entries}}- {{if .Breaking}}**💥 BREAKING:** {{end}}{{.Description}}{{if .PR}} ({{if .PR.Link}}[#{{.PR.Number}}]({{.PR.Link}}){{else}}#{{.PR.Number}}{{end}}){{end}} by {{if .AuthorRef}}[@{{.AuthorRef.Login}}]({{.AuthorRef.ProfileURL}}){{else}}{{.Author}}{{end}} ({{if .CommitURL}}[{{.ShortSHA}}]({{.CommitURL}}){{else}}{{.ShortSHA}}{{end}})
+  {{end}}
+  {{end}}{{if .Name}}{{if .CompareURL}}
+  **Full Changelog**: {{.CompareURL}}
+  {{end}}{{else}}{{if $.CompareURL}}
+  **Full Changelog**: {{$.CompareURL}}
+  {{end}}{{end}}
+  {{end}}

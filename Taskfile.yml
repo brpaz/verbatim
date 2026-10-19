@@ -1,0 +1,189 @@
+version: "3"
+vars:
+  BUILD_DIR: _build
+  INSTALL_DIR: _install
+  FLATPAK_MANIFEST: build-aux/dev.brunopaz.Verbatim.Devel.json
+  APP_ID: "dev.brunopaz.Verbatim.Devel"
+  APP_ID_PROD: "dev.brunopaz.Verbatim"
+tasks:
+  setup:
+    desc: Configure the Meson build directory (development profile)
+    cmds:
+      - meson setup {{.BUILD_DIR}} --prefix=/usr -Dprofile=development
+    status:
+      - test -d {{.BUILD_DIR}}
+
+  setup:release:
+    desc: Configure the Meson build directory (release profile)
+    cmds:
+      - meson setup {{.BUILD_DIR}} --prefix=/usr
+
+  build:
+    desc: Build the project with Meson (development)
+    deps: [setup]
+    cmds:
+      - meson compile -C {{.BUILD_DIR}}
+
+  build:release:
+    desc: Build the project in release mode
+    deps: [setup:release]
+    cmds:
+      - meson compile -C {{.BUILD_DIR}}
+
+  run:
+    desc: Build and run the application
+    deps: [build]
+    cmds:
+      - meson devenv -C {{.BUILD_DIR}} ./src/verbatim
+
+  test:
+    desc: Run all tests via Meson
+    deps: [build]
+    cmds:
+      - meson test -C {{.BUILD_DIR}} --print-errorlogs
+
+  test:cargo:
+    desc: Run Cargo tests directly
+    cmds:
+      - cargo test --all-targets --all-features --workspace
+
+  fmt:
+    desc: Format Rust code with rustfmt
+    cmds:
+      - cargo fmt --all
+
+  fmt:check:
+    desc: Check Rust formatting without modifying files
+    cmds:
+      - cargo fmt --all -- --check
+
+  clippy:
+    desc: Run Clippy lints
+    cmds:
+      - cargo clippy --all-targets --all-features --workspace -- -D warnings
+
+  deny:
+    desc: Check dependencies for advisories, licenses and banned sources
+    cmds:
+      - cargo deny check
+
+  secrets:
+    desc: Scan the repository history for leaked secrets
+    cmds:
+      - gitleaks git --redact --no-banner
+
+  blueprint:format:
+    desc: Format Blueprint files
+    cmds:
+      - blueprint-compiler format --fix data/resources/ui/*.blp
+
+  pot:
+    desc: Generate the POT translation template
+    deps: [setup]
+    cmds:
+      - ninja -C {{.BUILD_DIR}} verbatim-pot
+
+  update-po:
+    desc: Update all PO translation files from the POT template
+    deps: [setup]
+    cmds:
+      - ninja -C {{.BUILD_DIR}} verbatim-update-po
+
+  install:
+    desc: Install the application (requires sudo or appropriate prefix)
+    deps: [build]
+    cmds:
+      - meson install -C {{.BUILD_DIR}}
+
+  uninstall:
+    desc: Uninstall the application
+    cmds:
+      - ninja -C {{.BUILD_DIR}} uninstall
+
+  clean:
+    desc: Remove the Meson build directory
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+
+  clean:cargo:
+    desc: Clean Cargo build artifacts
+    cmds:
+      - cargo clean
+
+  clean:all:
+    desc: Remove all build artifacts (Meson + Cargo)
+    deps: [clean, clean:cargo]
+
+  flatpak:remote:
+    desc: Ensure the Flathub repository is added for the current user
+    cmds:
+      - flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+  flatpak:deps:
+    desc: Install Flatpak SDK/runtime dependencies for GNOME development
+    deps: [flatpak:remote]
+    cmds:
+      - flatpak install --user -y flathub org.gnome.Sdk//51 org.gnome.Platform//51 org.freedesktop.Sdk.Extension.rust-stable//26.08 org.freedesktop.Sdk.Extension.llvm22//26.08
+
+  flatpak:build:
+    desc: Build the Flatpak bundle (development)
+    deps: [flatpak:deps]
+    cmds:
+      - flatpak-builder
+        --force-clean
+        --user
+        --repo=repo
+        flatpak-build
+        {{.FLATPAK_MANIFEST}}
+
+  flatpak:install:
+    desc: Build and install the Flatpak locally for the current user
+    deps: [flatpak:deps]
+    cmds:
+      - flatpak-builder
+        --force-clean
+        --user
+        --install
+        --repo=repo
+        flatpak-build
+        {{.FLATPAK_MANIFEST}}
+
+  flatpak:run:
+    desc: Run the installed Flatpak (development build)
+    cmds:
+      - flatpak run {{.APP_ID}}
+
+  flatpak:bundle:
+    desc: Export a distributable development .flatpak bundle file
+    deps: [flatpak:build]
+    cmds:
+      - flatpak build-bundle repo {{.APP_ID}}.flatpak {{.APP_ID}}
+
+  flatpak:clean:
+    desc: Remove Flatpak build artifacts
+    cmds:
+      - rm -rf flatpak-build flatpak-build-prod repo {{.APP_ID}}.flatpak {{.APP_ID_PROD}}.flatpak
+
+  dist:
+    desc: Create a release tarball (vendors Cargo dependencies)
+    deps: [setup]
+    cmds:
+      - meson dist -C {{.BUILD_DIR}}
+
+  package:deb:
+    desc: Build and package a .deb from a release build (requires nfpm on $PATH)
+    deps: [setup:release]
+    cmds:
+      - meson compile -C {{.BUILD_DIR}}
+      - rm -rf {{.INSTALL_DIR}}
+      - DESTDIR=$PWD/{{.INSTALL_DIR}} meson install -C {{.BUILD_DIR}}
+      - VERSION=$(cat VERSION) nfpm package --config nfpm.yaml --packager deb --target verbatim.deb
+
+  package:rpm:
+    desc: Build and package a .rpm from a release build (requires nfpm on $PATH)
+    deps: [setup:release]
+    cmds:
+      - meson compile -C {{.BUILD_DIR}}
+      - rm -rf {{.INSTALL_DIR}}
+      - DESTDIR=$PWD/{{.INSTALL_DIR}} meson install -C {{.BUILD_DIR}}
+      - VERSION=$(cat VERSION) nfpm package --config nfpm.yaml --packager rpm --target verbatim.rpm
