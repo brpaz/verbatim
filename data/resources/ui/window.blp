@@ -85,6 +85,11 @@ menu export_menu {
       label: _("_Copy Text");
       action: "win.copy";
     }
+
+    item {
+      label: _("_Open With…");
+      action: "win.open-with";
+    }
   }
 }
 
@@ -149,7 +154,9 @@ template $VerbatimApplicationWindow: Adw.ApplicationWindow {
           child: Adw.StatusPage {
             icon-name: "dev.brunopaz.Verbatim-symbolic";
             title: _("Transcribe Audio");
-            description: _("Open or drop an audio or video file, or caption what is being said right now. Speech is recognised on this computer.");
+            description: _(
+              "Open or drop an audio or video file, or caption what is being said right now. Speech is recognised on this computer."
+            );
 
             child: Box {
               orientation: vertical;

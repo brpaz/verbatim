@@ -175,6 +175,15 @@ impl VerbatimApplicationWindow {
         let action_copy = gio::ActionEntry::builder("copy")
             .activate(|window: &Self, _, _| window.copy_text())
             .build();
+        let action_open_with = gio::ActionEntry::builder("open-with")
+            .activate(|window: &Self, _, _| {
+                glib::spawn_future_local(glib::clone!(
+                    #[weak]
+                    window,
+                    async move { window.open_with().await }
+                ));
+            })
+            .build();
         let action_cancel = gio::ActionEntry::builder("cancel")
             .activate(|window: &Self, _, _| {
                 if let Some(job) = window.imp().job.borrow().as_ref() {
@@ -209,6 +218,7 @@ impl VerbatimApplicationWindow {
             action_open,
             action_export,
             action_copy,
+            action_open_with,
             action_cancel,
             action_stop,
             action_live,
@@ -599,6 +609,7 @@ impl VerbatimApplicationWindow {
     fn set_transcript_actions_enabled(&self, enabled: bool) {
         self.set_action_enabled("export", enabled);
         self.set_action_enabled("copy", enabled);
+        self.set_action_enabled("open-with", enabled);
         self.imp().export_button.set_visible(enabled);
     }
 
@@ -647,6 +658,35 @@ impl VerbatimApplicationWindow {
         let text = render(&self.imp().segments.borrow(), Format::Text);
         self.clipboard().set_text(&text);
         self.toast(&gettext("Transcript copied"));
+    }
+
+    /// Saves the transcript as text in the cache and opens it with an app
+    /// the user picks.
+    async fn open_with(&self) {
+        let imp = self.imp();
+        let dir = glib::user_cache_dir().join("verbatim");
+        let path = dir.join(format!(
+            "{}.{}",
+            imp.export_name.borrow(),
+            Format::Text.extension()
+        ));
+        let contents = render(&imp.segments.borrow(), Format::Text);
+        if let Err(err) =
+            std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, contents))
+        {
+            tracing::warn!(error = %err, "could not save the transcript to open");
+            self.toast(&gettext("Could not open the transcript"));
+            return;
+        }
+
+        let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(&path)));
+        launcher.set_always_ask(true);
+        if let Err(err) = launcher.launch_future(Some(self)).await
+            && !err.matches(gtk::DialogError::Dismissed)
+        {
+            tracing::warn!(error = %err, "could not open the transcript");
+            self.toast(&gettext("Could not open the transcript"));
+        }
     }
 
     fn toast(&self, message: &str) {
