@@ -446,7 +446,7 @@ impl VerbatimApplicationWindow {
         imp.job.replace(Some(Job::start(input, engine, sender)));
         imp.progress_banner.set_title(&gettext("Preparing…"));
         imp.progress_banner.set_revealed(true);
-        self.action_set_enabled("win.cancel", true);
+        self.set_action_enabled("cancel", true);
 
         glib::spawn_future_local(glib::clone!(
             #[weak(rename_to = window)]
@@ -519,7 +519,7 @@ impl VerbatimApplicationWindow {
         imp.progress_banner.set_action_name(Some("win.cancel"));
         imp.progress_banner.set_revealed(false);
         imp.progress_bar.set_visible(false);
-        self.action_set_enabled("win.cancel", false);
+        self.set_action_enabled("cancel", false);
         let has_segments = !imp.segments.borrow().is_empty();
         self.set_transcript_actions_enabled(has_segments);
         if !has_segments && imp.stack.visible_child_name().as_deref() == Some("transcript") {
@@ -588,9 +588,17 @@ impl VerbatimApplicationWindow {
         imp.progress_bar.set_visible(true);
     }
 
+    /// Enables an action added with `add_action_entries`, which
+    /// `WidgetExt::action_set_enabled` does not affect.
+    fn set_action_enabled(&self, name: &str, enabled: bool) {
+        if let Some(action) = self.lookup_action(name).and_downcast::<gio::SimpleAction>() {
+            action.set_enabled(enabled);
+        }
+    }
+
     fn set_transcript_actions_enabled(&self, enabled: bool) {
-        self.action_set_enabled("win.export", enabled);
-        self.action_set_enabled("win.copy", enabled);
+        self.set_action_enabled("export", enabled);
+        self.set_action_enabled("copy", enabled);
         self.imp().export_button.set_visible(enabled);
     }
 
