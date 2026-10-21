@@ -36,6 +36,8 @@ jobs:
 
       - name: Check Flatpak Cargo sources are up to date
         run: |
+          # The container user does not own the checkout, which git refuses.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           build-aux/update-cargo-sources.sh
           git diff --exit-code -- build-aux/cargo-sources.json || {
             echo "::error file=build-aux/cargo-sources.json::Out of date with Cargo.lock. Run 'task flatpak:cargo-sources' and commit the result."
