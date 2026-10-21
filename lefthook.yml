@@ -21,6 +21,10 @@ pre-commit:
       stage_fixed: true
     secrets:
       run: gitleaks git --staged --redact --no-banner
+    cargo-sources:
+      glob: "Cargo.lock"
+      run: task flatpak:cargo-sources
+      stage_fixed: true
 pre-push:
   commands:
     commitlint:

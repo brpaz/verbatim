@@ -32,6 +32,7 @@ in
     gitleaks
     pkg-config
     nfpm
+    uv
     gst_all_1.gstreamer
   ] ++ gstPlugins;
 

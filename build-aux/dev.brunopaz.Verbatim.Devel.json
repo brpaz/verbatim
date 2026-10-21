@@ -22,15 +22,13 @@
     "command": "verbatim",
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
-        "build-args": ["--share=network"],
         "env": {
-            "CARGO_REGISTRIES_CRATES_IO_PROTOCOL": "sparse",
             "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER": "clang",
             "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold",
             "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "clang",
             "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C link-arg=-fuse-ld=/usr/lib/sdk/rust-stable/bin/mold"
         },
-        "test-args": ["--socket=x11", "--share=network"]
+        "test-args": ["--socket=x11"]
     },
     "modules": [
         {
@@ -51,6 +49,7 @@
             "run-tests": true,
             "build-options": {
                 "env": {
+                    "CARGO_NET_OFFLINE": "true",
                     "SHERPA_ONNX_ARCHIVE_DIR": "/run/build/verbatim/sherpa-onnx"
                 }
             },
@@ -59,6 +58,14 @@
                 {
                     "type": "dir",
                     "path": "../"
+                },
+                "cargo-sources.json",
+                {
+                    "type": "shell",
+                    "commands": [
+                        "mkdir -p .cargo",
+                        "cp cargo/config .cargo/config.toml"
+                    ]
                 },
                 {
                     "type": "file",

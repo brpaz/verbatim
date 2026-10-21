@@ -142,6 +142,13 @@ tasks:
     cmds:
       - flatpak install --user -y flathub org.gnome.Sdk//51 org.gnome.Platform//51 org.freedesktop.Sdk.Extension.rust-stable//26.08 org.freedesktop.Sdk.Extension.llvm22//26.08
 
+  flatpak:cargo-sources:
+    desc: Regenerate the Flatpak's offline Cargo sources from Cargo.lock (requires uv)
+    sources: [Cargo.lock]
+    generates: [build-aux/cargo-sources.json]
+    cmds:
+      - build-aux/update-cargo-sources.sh
+
   flatpak:build:
     desc: Build the Flatpak bundle (development)
     deps: [flatpak:deps]
