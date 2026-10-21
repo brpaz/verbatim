@@ -33,6 +33,16 @@ jobs:
       - name: Check dependencies
         run: cargo deny check
 
+      - uses: astral-sh/setup-uv@v10.3.0
+
+      - name: Check Flatpak Cargo sources are up to date
+        run: |
+          build-aux/update-cargo-sources.sh
+          git diff --exit-code -- build-aux/cargo-sources.json || {
+            echo "::error file=build-aux/cargo-sources.json::Out of date with Cargo.lock. Run 'task flatpak:cargo-sources' and commit the result."
+            exit 1
+          }
+
   test:
     name: Test
     runs-on: ubuntu-latest

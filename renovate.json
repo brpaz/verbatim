@@ -8,6 +8,7 @@
   "labels": ["dependencies"],
   "reviewers": ["brpaz"],
   "minimumReleaseAge": "3 days",
+  "gitIgnoredAuthors": ["41898282+github-actions[bot]@users.noreply.github.com"],
   "vulnerabilityAlerts": {
     "enabled": true,
     "labels": ["security"]

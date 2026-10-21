@@ -1,0 +1,35 @@
+name: Update Flatpak Cargo Sources
+# Renovate updates Cargo.lock but cannot run the generator, so its branches
+# get build-aux/cargo-sources.json regenerated here.
+on:
+  push:
+    branches: ["renovate/**"]
+    paths: [Cargo.lock]
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+
+      - name: Regenerate from Cargo.lock
+        run: build-aux/update-cargo-sources.sh
+
+      - name: Commit
+        id: commit
+        uses: stefanzweifel/git-auto-commit-action@v7.2.0
+        with:
+          commit_message: "build(deps): update Flatpak Cargo sources"
+          file_pattern: build-aux/cargo-sources.json
+
+      # A push made with GITHUB_TOKEN starts no workflows, so CI is started
+      # for the new commit explicitly.
+      - name: Run CI on the new commit
+        if: steps.commit.outputs.changes_detected == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref "$GITHUB_REF_NAME"

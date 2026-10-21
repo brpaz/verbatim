@@ -192,6 +192,12 @@ task flatpak:run:release
 
 The development and release Flatpaks have different app IDs, so both can be installed side by side.
 
+Flatpak builds have no network access, so Cargo reads its crates from `build-aux/cargo-sources.json`, generated from `Cargo.lock`. CI fails when it is out of date. The pre-commit hook regenerates it when `Cargo.lock` is staged, and the `Update Flatpak Cargo Sources` workflow does so on Renovate branches. To regenerate it by hand (requires `uv`):
+
+```bash
+task flatpak:cargo-sources
+```
+
 ### Building Native Packages
 
 Besides the Flatpak, the CI also builds `.deb` and `.rpm` packages with [nfpm](https://nfpm.goreleaser.com/) (config in `nfpm.yaml`) from a `DESTDIR`-staged Meson install — no bundled dependencies, unlike the Flatpak; the package declares GTK4/libadwaita/GLib as regular system dependencies. To build one locally (requires `nfpm` on `$PATH`):
