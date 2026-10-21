@@ -10,6 +10,7 @@ Verbatim is a GTK4 and libadwaita app in Rust that transcribes audio and video f
 │   ├── application.rs    # AdwApplication: actions, accelerators, opening files
 │   ├── window.rs         # Main window: file loading, live captions, transcript list, playback, export
 │   ├── transcription.rs  # Background transcription job, for a file or live audio
+│   ├── player.rs         # Audio playback for the media controls, on GStreamer `playbin`
 │   ├── preferences.rs    # Preferences dialog: speech model and language
 │   └── config.rs         # Build-time values from Meson (MESON_* variables)
 ├── crates/
@@ -39,7 +40,7 @@ flowchart LR
 ## Transcribing a file
 
 1. A file arrives from the Open dialog, a drop on the window, or the command line and "Open With" (`HANDLES_OPEN`).
-2. The window loads it into a `GtkMediaFile` for playback, and asks to download the models if any are missing ([ADR 0006](adr/0006-download-models-on-first-use.md)).
+2. The window loads it into a `Player`, a `GtkMediaStream` on GStreamer's `playbin` ([ADR 0009](adr/0009-play-files-with-playbin-instead-of-gtkmediafile.md)), and asks to download the models if any are missing ([ADR 0006](adr/0006-download-models-on-first-use.md)).
 3. `transcription::Job` starts a thread ([ADR 0005](adr/0005-run-transcription-on-a-thread-in-the-app.md)) that:
    - installs missing models into `$XDG_DATA_HOME/verbatim/models`,
    - decodes the file with `verbatim_audio::Decoder`, a chunk at a time,
