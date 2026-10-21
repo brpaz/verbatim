@@ -2269,6 +2269,7 @@ version = "0.0.0"
 dependencies = [
  "async-channel",
  "gettext-rs",
+ "gstreamer",
  "gtk4",
  "libadwaita",
  "tracing",

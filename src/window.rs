@@ -8,6 +8,7 @@ use verbatim_core::{Format, Segment, clock_time, render};
 
 use crate::application::VerbatimApplication;
 use crate::config::{APP_ID, PROFILE};
+use crate::player::Player;
 use crate::transcription::{self, Engine, Input, Job, LiveSource, Update};
 
 mod imp {
@@ -46,7 +47,7 @@ mod imp {
         pub live: Cell<Option<LiveSource>>,
         /// Last row of the list while live speech is in progress.
         pub partial_row: RefCell<Option<(gtk::ListBoxRow, gtk::Label)>>,
-        pub media: RefCell<Option<gtk::MediaFile>>,
+        pub media: RefCell<Option<Player>>,
         pub segments: RefCell<Vec<Segment>>,
         pub job: RefCell<Option<Job>>,
         /// Identifies the current job, so updates from a replaced job are
@@ -304,11 +305,7 @@ impl VerbatimApplicationWindow {
     /// Captions `source` live, replacing any previous transcript.
     fn start_live(&self, source: LiveSource) {
         let imp = self.imp();
-        if let Some(media) = imp.media.take() {
-            media.pause();
-        }
-        imp.media_controls.set_media_stream(gtk::MediaStream::NONE);
-        imp.media_bar.set_revealed(false);
+        self.clear_media();
         imp.file.take();
         let started = glib::DateTime::now_local()
             .and_then(|now| now.format("%Y-%m-%d %H-%M"))
@@ -348,7 +345,14 @@ impl VerbatimApplicationWindow {
 
     fn set_media(&self, file: &gio::File) {
         let imp = self.imp();
-        let media = gtk::MediaFile::for_file(file);
+        let media = match Player::for_file(file) {
+            Ok(media) => media,
+            Err(err) => {
+                tracing::warn!(error = %err, "could not play the file");
+                self.clear_media();
+                return;
+            }
+        };
         media.connect_timestamp_notify(glib::clone!(
             #[weak(rename_to = window)]
             self,
@@ -359,6 +363,15 @@ impl VerbatimApplicationWindow {
         if let Some(old) = imp.media.replace(Some(media)) {
             old.pause();
         }
+    }
+
+    fn clear_media(&self) {
+        let imp = self.imp();
+        if let Some(media) = imp.media.take() {
+            media.pause();
+        }
+        imp.media_controls.set_media_stream(gtk::MediaStream::NONE);
+        imp.media_bar.set_revealed(false);
     }
 
     /// Selects the segment playing at `ms`, keeping the previous one
@@ -517,11 +530,7 @@ impl VerbatimApplicationWindow {
     /// Returns to the initial page.
     fn close_file(&self) {
         let imp = self.imp();
-        if let Some(media) = imp.media.take() {
-            media.pause();
-        }
-        imp.media_controls.set_media_stream(gtk::MediaStream::NONE);
-        imp.media_bar.set_revealed(false);
+        self.clear_media();
         imp.file.take();
         imp.window_title.set_subtitle("");
         imp.stack.set_visible_child_name("empty");

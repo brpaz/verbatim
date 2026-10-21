@@ -1,5 +1,6 @@
 mod application;
 mod config;
+mod player;
 mod preferences;
 mod transcription;
 mod window;

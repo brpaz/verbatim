@@ -38,6 +38,7 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 gtk = { version = "0.11", package = "gtk4", features = ["v4_20"] }
 adw = { version = "0.9", package = "libadwaita", features = ["v1_8"] }
 async-channel.workspace = true
+gst.workspace = true
 verbatim-audio.workspace = true
 verbatim-core.workspace = true
 verbatim-models.workspace = true
