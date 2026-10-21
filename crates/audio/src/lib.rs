@@ -1,6 +1,7 @@
 //! Decodes audio and video files, and captures live audio, into the mono
 //! samples the transcriber reads.
 
+use std::cell::Cell;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -51,7 +52,8 @@ pub struct Decoder {
     pipeline: PipelineGuard,
     sink: gst_app::AppSink,
     sample_rate: u32,
-    total_samples: Option<u64>,
+    /// Cached once known.
+    total_samples: Cell<Option<u64>>,
     done: bool,
     stop: Option<Arc<AtomicBool>>,
 }
@@ -86,25 +88,36 @@ impl Decoder {
             .and_downcast::<gst_app::AppSink>()
             .expect("the launch line names its appsink");
 
-        // The duration of a file is known once the pipeline has prerolled. A
-        // file that cannot be decoded fails here, or on the first chunk. Live
-        // sources do not preroll and have no duration.
+        // A file that cannot be decoded fails here, or on the first chunk.
+        // Live sources do not preroll.
         pipeline.0.set_state(gst::State::Paused)?;
         let _ = pipeline.0.state(gst::ClockTime::from_seconds(5));
-        let total_samples = pipeline
-            .0
-            .query_duration::<gst::ClockTime>()
-            .map(|duration| duration.nseconds() * u64::from(sample_rate) / 1_000_000_000);
         pipeline.0.set_state(gst::State::Playing)?;
 
-        Ok(Self {
+        let decoder = Self {
             pipeline,
             sink,
             sample_rate,
-            total_samples,
+            total_samples: Cell::new(None),
             done: false,
             stop,
-        })
+        };
+        decoder.total_samples.set(decoder.query_total_samples());
+        Ok(decoder)
+    }
+
+    /// The duration of a file is usually known once the pipeline has
+    /// prerolled, but an MP3 file without a header giving its length only
+    /// has one once decoding has started, estimated from its bitrate. Live
+    /// sources have no duration.
+    fn query_total_samples(&self) -> Option<u64> {
+        if self.stop.is_some() {
+            return None;
+        }
+        self.pipeline
+            .0
+            .query_duration::<gst::ClockTime>()
+            .map(|duration| duration.nseconds() * u64::from(self.sample_rate) / 1_000_000_000)
     }
 
     fn stopped(&self) -> bool {
@@ -166,7 +179,10 @@ impl verbatim_core::AudioStream for Decoder {
     }
 
     fn total_samples(&self) -> Option<u64> {
-        self.total_samples
+        if self.total_samples.get().is_none() {
+            self.total_samples.set(self.query_total_samples());
+        }
+        self.total_samples.get()
     }
 
     fn next_chunk(&mut self) -> Option<Result<Vec<f32>, verbatim_core::Error>> {
@@ -205,11 +221,12 @@ mod tests {
     use super::*;
     use verbatim_core::AudioStream;
 
-    /// Writes one second of a 44.1 kHz stereo sine wave to an Ogg Vorbis file.
-    fn write_sine(path: &Path) {
+    /// Writes one second of a 44.1 kHz stereo sine wave to a file, through
+    /// `encoder`.
+    fn write_sine(path: &Path, encoder: &str) {
         let pipeline = gst::parse::launch(&format!(
             "audiotestsrc num-buffers=43 samplesperbuffer=1024 wave=sine \
-             ! audio/x-raw,rate=44100,channels=2 ! audioconvert ! vorbisenc ! oggmux \
+             ! audio/x-raw,rate=44100,channels=2 ! audioconvert ! {encoder} \
              ! filesink location={}",
             path.display()
         ))
@@ -231,7 +248,7 @@ mod tests {
         init().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sine.ogg");
-        write_sine(&path);
+        write_sine(&path, "vorbisenc ! oggmux");
 
         let decoder = Decoder::open(&path, 16_000).unwrap();
         let total = decoder.total_samples().unwrap();
@@ -246,6 +263,29 @@ mod tests {
             "decoded {decoded} of {total}"
         );
         assert!(chunks.iter().flatten().any(|s| s.abs() > 0.1));
+    }
+
+    /// `lamemp3enc` writes no header giving the length, as in many podcasts.
+    #[test]
+    fn finds_duration_of_mp3_without_length_header_once_decoding() {
+        init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sine.mp3");
+        write_sine(&path, "lamemp3enc");
+
+        let mut decoder = Decoder::open(&path, 16_000).unwrap();
+        let mut decoded = 0;
+        for chunk in decoder.by_ref() {
+            decoded += chunk.unwrap().len() as i64;
+        }
+        let total = decoder
+            .total_samples()
+            .expect("duration known after decoding");
+
+        assert!(
+            (decoded - total as i64).abs() < 1_600,
+            "decoded {decoded} of {total}"
+        );
     }
 
     #[test]

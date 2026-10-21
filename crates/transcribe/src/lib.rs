@@ -268,7 +268,6 @@ impl Transcriber for SherpaTranscriber {
         let vad = VoiceActivityDetector::create(&self.vad_config, MAX_SEGMENT_SECS * 2.0)
             .ok_or_else(|| backend_error("could not load the Silero VAD model"))?;
 
-        let total_samples = audio.total_samples();
         let max_recent =
             (self.vad_config.silero_vad.max_speech_duration + 1.0) as usize * SAMPLE_RATE as usize;
         let mut recent = Recent::default();
@@ -288,7 +287,13 @@ impl Transcriber for SherpaTranscriber {
             }
             pending.drain(..whole);
             if self
-                .drain(&vad, total_samples, &mut recent, &mut context, on_event)
+                .drain(
+                    &vad,
+                    audio.total_samples(),
+                    &mut recent,
+                    &mut context,
+                    on_event,
+                )
                 .is_break()
             {
                 return Err(Error::Cancelled);
@@ -315,7 +320,13 @@ impl Transcriber for SherpaTranscriber {
         }
         vad.flush();
         if self
-            .drain(&vad, total_samples, &mut recent, &mut context, on_event)
+            .drain(
+                &vad,
+                audio.total_samples(),
+                &mut recent,
+                &mut context,
+                on_event,
+            )
             .is_break()
             || on_event(Event::Progress(1.0)).is_break()
         {

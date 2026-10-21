@@ -25,7 +25,8 @@ pub enum Error {
 /// memory.
 pub trait AudioStream {
     fn sample_rate(&self) -> u32;
-    /// Length of the whole stream in samples, when known.
+    /// Length of the whole stream in samples, when known. It can become
+    /// known only after the first chunks have been read.
     fn total_samples(&self) -> Option<u64>;
     /// The next chunk, or `None` at the end.
     fn next_chunk(&mut self) -> Option<Result<Vec<f32>, Error>>;
