@@ -6,6 +6,7 @@ vars:
   RELEASE_BUILD_DIR: _build-release
   INSTALL_DIR: _install
   FLATPAK_MANIFEST: build-aux/dev.brunopaz.Verbatim.Devel.json
+  FLATPAK_MANIFEST_PROD: build-aux/dev.brunopaz.Verbatim.json
   APP_ID: "dev.brunopaz.Verbatim.Devel"
   APP_ID_PROD: "dev.brunopaz.Verbatim"
 tasks:
@@ -174,6 +175,40 @@ tasks:
     deps: [flatpak:build]
     cmds:
       - flatpak build-bundle repo {{.APP_ID}}.flatpak {{.APP_ID}}
+
+  flatpak:build:release:
+    desc: Build the Flatpak bundle (release)
+    deps: [flatpak:deps]
+    cmds:
+      - flatpak-builder
+        --force-clean
+        --user
+        --repo=repo
+        flatpak-build-prod
+        {{.FLATPAK_MANIFEST_PROD}}
+
+  flatpak:install:release:
+    desc: Build and install the release Flatpak locally for the current user
+    deps: [flatpak:deps]
+    cmds:
+      - flatpak-builder
+        --force-clean
+        --user
+        --install
+        --repo=repo
+        flatpak-build-prod
+        {{.FLATPAK_MANIFEST_PROD}}
+
+  flatpak:run:release:
+    desc: Run the installed Flatpak (release build)
+    cmds:
+      - flatpak run {{.APP_ID_PROD}}
+
+  flatpak:bundle:release:
+    desc: Export a distributable release .flatpak bundle file
+    deps: [flatpak:build:release]
+    cmds:
+      - flatpak build-bundle repo {{.APP_ID_PROD}}.flatpak {{.APP_ID_PROD}}
 
   flatpak:clean:
     desc: Remove Flatpak build artifacts

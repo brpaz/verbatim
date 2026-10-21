@@ -185,7 +185,12 @@ task flatpak:install
 # Run the installed Flatpak
 task flatpak:run
 
+# Same for the release build (app ID dev.brunopaz.Verbatim)
+task flatpak:install:release
+task flatpak:run:release
 ```
+
+The development and release Flatpaks have different app IDs, so both can be installed side by side.
 
 ### Building Native Packages
 
@@ -213,9 +218,9 @@ This project uses [Task](https://taskfile.dev/) for common development tasks. Ru
 | `task deny` | Check dependencies for advisories, licenses and sources (cargo-deny) |
 | `task secrets` | Scan the repository for leaked secrets (gitleaks) |
 | `task clean` | Remove build artifacts |
-| `task flatpak:build` | Build a Flatpak |
-| `task flatpak:install` | Install Flatpak locally |
-| `task flatpak:bundle` | Create a .flatpak bundle file |
+| `task flatpak:build` / `task flatpak:build:release` | Build a development / release Flatpak |
+| `task flatpak:install` / `task flatpak:install:release` | Install the development / release Flatpak locally |
+| `task flatpak:bundle` / `task flatpak:bundle:release` | Create a development / release .flatpak bundle file |
 | `task package:deb` / `task package:rpm` | Build a `.deb` / `.rpm` with nfpm |
 | `task dist` | Create a release tarball |
 
