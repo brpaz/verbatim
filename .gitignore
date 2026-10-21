@@ -30,3 +30,6 @@ flatpak-build-prod
 flatpak
 *.flatpak
 __pycache__
+
+# Task checksums
+.task/
