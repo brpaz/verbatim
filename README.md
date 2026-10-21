@@ -52,6 +52,12 @@ sudo apt install ./verbatim.deb
 sudo dnf install ./verbatim.rpm
 ```
 
+Each release file has a signed build provenance attestation. To check that a file was built from this repository by its release workflow, use the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify dev.brunopaz.Verbatim.flatpak --repo brpaz/verbatim
+```
+
 ## Build from Source
 
 ```bash

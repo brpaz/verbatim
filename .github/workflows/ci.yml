@@ -105,6 +105,8 @@ jobs:
     needs: [lint, test]
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
@@ -126,6 +128,11 @@ jobs:
           run-tests: false
           cache-key: flatpak-builder-${{ github.sha }}
 
+      - name: Attest build provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: dev.brunopaz.Verbatim.flatpak
+
       - name: Upload Flatpak artifact to release
         uses: softprops/action-gh-release@v3.0.3
         with:
@@ -137,6 +144,10 @@ jobs:
     if: github.event_name == 'release'
     needs: test
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     container: ubuntu:26.04
     steps:
       - name: Install build dependencies
@@ -166,6 +177,11 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: VERSION="${RELEASE_TAG#v}" nfpm package --config nfpm.yaml --packager deb --target verbatim.deb
 
+      - name: Attest build provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: verbatim.deb
+
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: verbatim-deb
@@ -176,6 +192,10 @@ jobs:
     if: github.event_name == 'release'
     needs: test
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     container: fedora:44
     steps:
       - uses: actions/checkout@v7.0.1
@@ -207,6 +227,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: VERSION="${RELEASE_TAG#v}" nfpm package --config nfpm.yaml --packager rpm --target verbatim.rpm
+
+      - name: Attest build provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: verbatim.rpm
 
       - uses: actions/upload-artifact@v7.0.2
         with:
