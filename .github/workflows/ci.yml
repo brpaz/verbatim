@@ -10,9 +10,8 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
-    # libadwaita >= 1.8 is not packaged on ubuntu-latest
-    container: fedora:latest
+    runs-on: ubuntu-26.04
+    container: fedora:44
     steps:
       - name: Install system dependencies
         run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gstreamer1-devel gstreamer1-plugins-base gstreamer1-plugins-good gettext desktop-file-utils appstream
@@ -45,8 +44,8 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
-    container: fedora:latest
+    runs-on: ubuntu-26.04
+    container: fedora:44
     steps:
       # desktop-file-utils and appstream are what let meson's registered
       # validate-desktop/validate-appdata tests actually run instead of
@@ -69,7 +68,7 @@ jobs:
   flatpak-dev:
     name: Build Flatpak (Development)
     if: github.event_name != 'release'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [lint, test]
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
@@ -102,7 +101,7 @@ jobs:
   flatpak-release:
     name: Build Flatpak (Release)
     if: github.event_name == 'release'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [lint, test]
     permissions:
       contents: write
@@ -137,9 +136,8 @@ jobs:
     name: Build .deb package
     if: github.event_name == 'release'
     needs: test
-    runs-on: ubuntu-latest
-    # libadwaita >= 1.8 is not packaged on ubuntu-latest
-    container: debian:unstable
+    runs-on: ubuntu-26.04
+    container: ubuntu:26.04
     steps:
       - name: Install build dependencies
         run: |
@@ -177,8 +175,8 @@ jobs:
     name: Build .rpm package
     if: github.event_name == 'release'
     needs: test
-    runs-on: ubuntu-latest
-    container: fedora:latest
+    runs-on: ubuntu-26.04
+    container: fedora:44
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -219,7 +217,7 @@ jobs:
     name: Attach .deb/.rpm packages to release
     needs: [build-deb, build-rpm]
     if: github.event_name == 'release'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     steps:
