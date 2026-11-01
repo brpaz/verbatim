@@ -3,6 +3,9 @@ ignore = [
   { id = "RUSTSEC-2026-0367", reason = "Extraction flaws in zip 2, a build-dependency of sherpa-onnx-sys that only unpacks sherpa-onnx release archives at build time; the app never extracts archives. Remove once sherpa-onnx-sys moves to zip >= 9." },
   { id = "RUSTSEC-2026-0368", reason = "Extraction flaws in zip 2, a build-dependency of sherpa-onnx-sys that only unpacks sherpa-onnx release archives at build time; the app never extracts archives. Remove once sherpa-onnx-sys moves to zip >= 9." },
   { id = "RUSTSEC-2026-0369", reason = "Extraction flaws in zip 2, a build-dependency of sherpa-onnx-sys that only unpacks sherpa-onnx release archives at build time; the app never extracts archives. Remove once sherpa-onnx-sys moves to zip >= 9." },
+  { id = "RUSTSEC-2026-0391", reason = "zstd 0.13 and zstd-safe 7 are pulled in only by zip 2, a build-dependency of sherpa-onnx-sys that unpacks sherpa-onnx release archives at build time; patched releases need zstd >= 0.14 which zip 2 does not allow. Remove once sherpa-onnx-sys moves to zip >= 9." },
+  { id = "RUSTSEC-2026-0398", reason = "zstd 0.13 and zstd-safe 7 are pulled in only by zip 2, a build-dependency of sherpa-onnx-sys that unpacks sherpa-onnx release archives at build time; patched releases need zstd >= 0.14 which zip 2 does not allow. Remove once sherpa-onnx-sys moves to zip >= 9." },
+  { id = "RUSTSEC-2026-0403", reason = "zstd 0.13 and zstd-safe 7 are pulled in only by zip 2, a build-dependency of sherpa-onnx-sys that unpacks sherpa-onnx release archives at build time; patched releases need zstd >= 0.14 which zip 2 does not allow. Remove once sherpa-onnx-sys moves to zip >= 9." },
 ]
 version = 2
 
