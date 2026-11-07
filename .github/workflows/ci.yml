@@ -11,13 +11,13 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-26.04
-    container: fedora:44
+    container: fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e
     steps:
       - name: Install system dependencies
         run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-base gstreamer1-plugins-good gettext desktop-file-utils appstream
 
-      - uses: actions/checkout@v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
 
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
@@ -25,14 +25,14 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy --all -- -D warnings
 
-      - uses: taiki-e/install-action@v2.87.29
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
         with:
           tool: cargo-deny
 
       - name: Check dependencies
         run: cargo deny check
 
-      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Check Flatpak Cargo sources are up to date
         run: |
@@ -47,7 +47,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-26.04
-    container: fedora:44
+    container: fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e
     steps:
       # desktop-file-utils and appstream are what let meson's registered
       # validate-desktop/validate-appdata tests actually run instead of
@@ -55,8 +55,8 @@ jobs:
       - name: Install system dependencies
         run: dnf install -y git curl meson ninja-build gcc gcc-c++ pkgconf-pkg-config gtk4-devel libadwaita-devel blueprint-compiler glib2-devel gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-base gstreamer1-plugins-good gettext desktop-file-utils appstream
 
-      - uses: actions/checkout@v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
 
       - name: Configure
         run: meson setup _build --prefix=/usr
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-26.04
     needs: [lint, test]
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51@sha256:78d969b18225ae107ca29497bf09c4a3f791e5f1838a9a912a529d0024fb6210
       # The host paths are mounted so the first step can delete them: the SDK
       # runtime, extensions and cargo target do not fit in the runner's free disk.
       options: >-
@@ -90,7 +90,7 @@ jobs:
           rm -rf /host/android/* /host/dotnet/* /host/ghc/* /host/swift/* || true
           df -h /
 
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Prepare build
         shell: bash
@@ -100,7 +100,7 @@ jobs:
           echo -n "${version}" > VERSION
 
       - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6.8
+        uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           bundle: dev.brunopaz.Verbatim.Devel.flatpak
           manifest-path: build-aux/dev.brunopaz.Verbatim.Devel.json
@@ -108,7 +108,7 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
 
       - name: Upload Flatpak artifact
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name != 'pull_request'
         with:
           name: dev.brunopaz.Verbatim.Devel.flatpak
@@ -124,7 +124,7 @@ jobs:
       id-token: write
       attestations: write
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51@sha256:78d969b18225ae107ca29497bf09c4a3f791e5f1838a9a912a529d0024fb6210
       # The host paths are mounted so the first step can delete them: the SDK
       # runtime, extensions and cargo target do not fit in the runner's free disk.
       options: >-
@@ -141,7 +141,7 @@ jobs:
           rm -rf /host/android/* /host/dotnet/* /host/ghc/* /host/swift/* || true
           df -h /
 
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set version
         shell: bash
@@ -151,7 +151,7 @@ jobs:
           python3 build-aux/add-release.py "${version}"
 
       - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6.8
+        uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           bundle: dev.brunopaz.Verbatim.flatpak
           manifest-path: build-aux/dev.brunopaz.Verbatim.json
@@ -159,7 +159,7 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
 
       - name: Attest build provenance
-        uses: actions/attest@v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dev.brunopaz.Verbatim.flatpak
 
@@ -178,15 +178,15 @@ jobs:
       contents: read
       id-token: write
       attestations: write
-    container: ubuntu:26.04
+    container: ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
     steps:
       - name: Install build dependencies
         run: |
           apt-get update
           apt-get install -y git curl ca-certificates meson ninja-build gcc g++ pkg-config libgtk-4-dev libadwaita-1-dev blueprint-compiler libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gettext desktop-file-utils appstream
 
-      - uses: actions/checkout@v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
 
       - name: Set version
         env:
@@ -208,11 +208,11 @@ jobs:
         run: VERSION="${RELEASE_TAG#v}" nfpm package --config nfpm.yaml --packager deb --target verbatim.deb
 
       - name: Attest build provenance
-        uses: actions/attest@v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: verbatim.deb
 
-      - uses: actions/upload-artifact@v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verbatim-deb
           path: verbatim.deb
@@ -226,9 +226,9 @@ jobs:
       contents: read
       id-token: write
       attestations: write
-    container: fedora:44
+    container: fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies
         run: |
@@ -259,11 +259,11 @@ jobs:
         run: VERSION="${RELEASE_TAG#v}" nfpm package --config nfpm.yaml --packager rpm --target verbatim.rpm
 
       - name: Attest build provenance
-        uses: actions/attest@v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: verbatim.rpm
 
-      - uses: actions/upload-artifact@v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verbatim-rpm
           path: verbatim.rpm
@@ -276,11 +276,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: verbatim-deb
 
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: verbatim-rpm
 
